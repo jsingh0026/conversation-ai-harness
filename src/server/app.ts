@@ -6,6 +6,7 @@ import type { CrmClient } from '../crm/types.js';
 import { createOrchestratorStack, type OrchestratorStack } from '../orchestrator/index.js';
 import { createKnowledgeTool } from '../rag/index.js';
 import { createSkills } from '../skills/index.js';
+import { registerOAuthRoutes } from './oauth.js';
 import { normalizeWebhook, type HighLevelInboundWebhook } from './webhook.js';
 
 export interface AppDeps {
@@ -28,6 +29,10 @@ function defaultDeps(): AppDeps {
 export function buildApp(deps: AppDeps = defaultDeps()) {
   const app = Fastify({ loggerInstance: logger });
   const { orchestrator, queue, idempotency } = deps.stack;
+
+  // Cast around Fastify's custom-logger generic (the injected pino instance
+  // makes the concrete type diverge from the default FastifyInstance).
+  registerOAuthRoutes(app as unknown as Parameters<typeof registerOAuthRoutes>[0]);
 
   app.get('/health', async () => ({
     status: 'ok',

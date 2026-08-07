@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { createHighLevelClient } from './highlevel/index.js';
 import { MockCrmClient } from './mock.js';
 import type { CrmClient } from './types.js';
 
@@ -15,9 +16,8 @@ export function createCrmClient(): CrmClient {
     case 'mock':
       return new MockCrmClient();
     case 'highlevel':
-      throw new Error(
-        'CRM_MODE=highlevel is not implemented yet (Phase 7). Set CRM_MODE=mock for now.',
-      );
+      // Reads HL_* env lazily inside; throws a clear error if unconfigured.
+      return createHighLevelClient();
     default:
       throw new Error(`Unknown CRM_MODE: ${String(env.CRM_MODE)}`);
   }

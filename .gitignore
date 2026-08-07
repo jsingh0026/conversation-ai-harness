@@ -13,8 +13,8 @@ coverage/
 logs/
 traces/
 
-# local data / vector index
-data/index/
+# local data: vector index + OAuth tokens (secret)
+data/
 *.sqlite
 *.sqlite3
 
