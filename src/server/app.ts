@@ -3,19 +3,26 @@ import { env } from '../config/env.js';
 import { logger } from '../util/logger.js';
 import { createCrmClient } from '../crm/index.js';
 import type { CrmClient } from '../crm/types.js';
+import { createOrchestratorStack, type OrchestratorStack } from '../orchestrator/index.js';
 import { normalizeWebhook, type HighLevelInboundWebhook } from './webhook.js';
 
 export interface AppDeps {
   crm: CrmClient;
+  stack: OrchestratorStack;
+}
+
+function defaultDeps(): AppDeps {
+  const crm = createCrmClient();
+  return { crm, stack: createOrchestratorStack(crm) };
 }
 
 /**
- * Build the Fastify app. Dependencies are injected so tests can pass a seeded
- * MockCrmClient. Phase 0 wires the webhook to normalization + an idempotency
- * stub; the orchestrator (Phase 2) replaces the TODO with a real turn.
+ * Build the Fastify app. Deps are injected so tests can supply a seeded mock
+ * CRM + orchestrator stack and await the queue to observe the reply.
  */
-export function buildApp(deps: AppDeps = { crm: createCrmClient() }) {
+export function buildApp(deps: AppDeps = defaultDeps()) {
   const app = Fastify({ loggerInstance: logger });
+  const { orchestrator, queue, idempotency } = deps.stack;
 
   app.get('/health', async () => ({
     status: 'ok',
@@ -25,22 +32,32 @@ export function buildApp(deps: AppDeps = { crm: createCrmClient() }) {
   }));
 
   app.post('/webhook', async (request, reply) => {
-    const raw = request.body as HighLevelInboundWebhook;
-    const result = normalizeWebhook(raw ?? {});
+    const result = normalizeWebhook((request.body ?? {}) as HighLevelInboundWebhook);
 
     if ('skip' in result) {
       request.log.debug({ reason: result.skip }, 'webhook skipped');
-      // Always 200 so HighLevel does not retry a payload we intentionally ignore.
+      // 200 so HighLevel does not retry a payload we intentionally ignore.
       return reply.code(200).send({ ignored: result.skip });
     }
 
-    // TODO(Phase 2): idempotency dedupe + enqueue on the per-conversation queue,
-    // then run the orchestrator turn. For now, acknowledge receipt.
+    // Idempotency: drop duplicate deliveries of the same message.
+    if (!idempotency.markIfNew(result.idempotencyKey)) {
+      request.log.info({ messageId: result.idempotencyKey }, 'duplicate webhook dropped');
+      return reply.code(200).send({ duplicate: true });
+    }
+
+    // Ack fast; process on the per-conversation queue so rapid back-to-back
+    // messages serialize and a slow turn never blocks the webhook.
+    const { message } = result;
+    void queue
+      .enqueue(message.conversationId, () => orchestrator.runTurn(message))
+      .catch((err) => request.log.error({ err, messageId: message.messageId }, 'turn processing failed'));
+
     request.log.info(
-      { conversationId: result.message.conversationId, messageId: result.message.messageId },
-      'inbound message received',
+      { conversationId: message.conversationId, messageId: message.messageId },
+      'inbound message accepted',
     );
-    return reply.code(202).send({ accepted: true, messageId: result.message.messageId });
+    return reply.code(202).send({ accepted: true, messageId: message.messageId });
   });
 
   return app;
