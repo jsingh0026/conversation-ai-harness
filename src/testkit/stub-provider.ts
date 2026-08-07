@@ -36,7 +36,10 @@ export class StubProvider implements LLMProvider {
   constructor(private readonly script: GenerateResult[] | ((req: GenerateRequest) => GenerateResult)) {}
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
-    this.requests.push(req);
+    // Snapshot messages (the orchestrator mutates one array across calls, so we
+    // must capture per-call state, not a shared reference). `tools` holds Zod
+    // schemas that aren't structured-cloneable, so keep those by reference.
+    this.requests.push({ ...req, messages: structuredClone(req.messages) });
     if (typeof this.script === 'function') return this.script(req);
     const next = this.script[this.index++];
     if (!next) throw new Error('StubProvider script exhausted');

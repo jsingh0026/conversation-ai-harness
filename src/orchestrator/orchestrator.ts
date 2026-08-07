@@ -1,5 +1,12 @@
 import type { CrmClient, InboundMessage } from '../crm/types.js';
-import type { LlmMessage, LLMProvider, ToolCall, ToolResult, ToolSpec } from '../llm/types.js';
+import type {
+  GenerateResult,
+  LlmMessage,
+  LLMProvider,
+  ToolCall,
+  ToolResult,
+  ToolSpec,
+} from '../llm/types.js';
 import { buildSystemPrompt, type SystemPromptVars } from '../prompts/system.js';
 import { TraceCollector } from '../trace/collector.js';
 import { emitTrace } from '../trace/emit.js';
@@ -20,6 +27,11 @@ export interface OrchestratorDeps {
 
 const FALLBACK_REPLY =
   "I'm having trouble completing that right now — let me get a team member to help.";
+
+/** Guard against a provider returning empty/whitespace text with no tool calls. */
+function textOrFallback(text: string | null): string {
+  return text && text.trim() ? text : FALLBACK_REPLY;
+}
 
 /**
  * The harness core. One `runTurn` drives a bounded tool-use loop: the model
@@ -76,22 +88,28 @@ export class Orchestrator {
         trace,
       });
 
-      // The bot may have been disabled mid-turn by a handover skill.
-      if (await this.crm.isBotEnabled(message.conversationId)) {
+      // A handover skill may have disabled the bot mid-turn. If so, that skill
+      // owns the final customer message — we don't send our own reply, and we
+      // must NOT persist an assistant message the customer never received.
+      const stillEnabled = await this.crm.isBotEnabled(message.conversationId);
+      if (stillEnabled) {
         await this.crm.sendMessage({
           conversationId: message.conversationId,
           contactId: message.contactId,
           channel: message.channel,
           body: reply,
         });
+        this.history.append(
+          message.conversationId,
+          { role: 'user', content: message.body },
+          { role: 'assistant', content: reply },
+        );
+        trace.setReply(reply);
+      } else {
+        // Retain the customer's message for future context, but no assistant turn.
+        this.history.append(message.conversationId, { role: 'user', content: message.body });
+        trace.setReply(null);
       }
-
-      this.history.append(
-        message.conversationId,
-        { role: 'user', content: message.body },
-        { role: 'assistant', content: reply },
-      );
-      trace.setReply(reply);
       return await this.complete(trace);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -105,17 +123,10 @@ export class Orchestrator {
   /** The provider↔tool loop. Returns the final assistant reply text. */
   private async runLoop(system: string, messages: LlmMessage[], ctx: ToolContext): Promise<string> {
     for (let step = 0; step < this.maxSteps; step++) {
-      const t0 = Date.now();
-      const res = await this.provider.generate({
-        system,
-        messages,
-        tools: this.toolSpecs.length > 0 ? this.toolSpecs : undefined,
-        toolChoice: this.toolSpecs.length > 0 ? 'auto' : undefined,
-      });
-      ctx.trace.addProviderStep(res, this.provider.name, this.provider.model, Date.now() - t0);
+      const res = await this.callProvider(system, messages, ctx, true);
 
       if (res.toolCalls.length === 0) {
-        return res.text ?? FALLBACK_REPLY;
+        return textOrFallback(res.text);
       }
 
       messages.push({ role: 'assistant', content: res.text ?? '', toolCalls: res.toolCalls });
@@ -126,8 +137,32 @@ export class Orchestrator {
       messages.push({ role: 'tool', toolResults });
     }
 
-    logger.warn({ conversationId: ctx.conversationId }, 'max steps reached');
-    return FALLBACK_REPLY;
+    // Budget exhausted while the model still wants tools. Do NOT run more tools
+    // (their side effects would fire with their results discarded). Instead make
+    // one final call WITHOUT tools so the model closes out from what it gathered.
+    logger.warn({ conversationId: ctx.conversationId }, 'max steps reached; closing out');
+    ctx.trace.setBudgetExhausted();
+    const closing = await this.callProvider(system, messages, ctx, false);
+    return textOrFallback(closing.text);
+  }
+
+  /** One provider call, timed and recorded on the trace. */
+  private async callProvider(
+    system: string,
+    messages: LlmMessage[],
+    ctx: ToolContext,
+    withTools: boolean,
+  ): Promise<GenerateResult> {
+    const useTools = withTools && this.toolSpecs.length > 0;
+    const t0 = Date.now();
+    const res = await this.provider.generate({
+      system,
+      messages,
+      tools: useTools ? this.toolSpecs : undefined,
+      toolChoice: useTools ? 'auto' : undefined,
+    });
+    ctx.trace.addProviderStep(res, this.provider.name, this.provider.model, Date.now() - t0);
+    return res;
   }
 
   /** Validate args, run the named tool, and record the step. */

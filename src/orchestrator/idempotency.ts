@@ -18,14 +18,21 @@ export class IdempotencyStore {
     const at = this.seen.get(key);
     if (at !== undefined && now - at < this.ttlMs) return false;
 
+    // Drop any expired entry for this key first, so re-adding it doesn't grow
+    // the map and trigger an unnecessary eviction of an unrelated valid entry.
+    this.seen.delete(key);
     if (this.seen.size >= this.max) {
       // Evict the oldest inserted key (Map preserves insertion order).
       const oldest = this.seen.keys().next().value;
       if (oldest !== undefined) this.seen.delete(oldest);
     }
-    this.seen.delete(key); // refresh insertion order for an expired re-add
     this.seen.set(key, now);
     return true;
+  }
+
+  /** Forget a key so a redelivery can be reprocessed (used when a turn fails). */
+  delete(key: string): void {
+    this.seen.delete(key);
   }
 
   has(key: string): boolean {

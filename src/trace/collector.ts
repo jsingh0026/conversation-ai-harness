@@ -24,6 +24,7 @@ export class TraceCollector {
   private reply: string | null = null;
   private decision: TraceDecision | undefined;
   private error: string | undefined;
+  private budgetExhausted = false;
 
   constructor(private readonly init: TraceInit) {}
 
@@ -60,6 +61,10 @@ export class TraceCollector {
     this.reply = reply;
   }
 
+  setBudgetExhausted(): void {
+    this.budgetExhausted = true;
+  }
+
   setError(message: string): void {
     this.error = message;
     this.decision = 'error';
@@ -90,6 +95,7 @@ export class TraceCollector {
       steps: this.steps,
       tokens,
       reply: this.reply,
+      budgetExhausted: this.budgetExhausted || undefined,
       error: this.error,
     };
   }

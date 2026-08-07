@@ -60,5 +60,7 @@ export interface Trace {
   steps: TraceStep[];
   tokens: { inputTokens: number; outputTokens: number };
   reply: string | null;
+  /** True when the turn hit the step budget and closed out with a fallback. */
+  budgetExhausted?: boolean;
   error?: string;
 }

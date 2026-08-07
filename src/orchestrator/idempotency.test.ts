@@ -22,6 +22,13 @@ describe('IdempotencyStore', () => {
     expect(s.markIfNew('m1')).toBe(true);
   });
 
+  it('re-accepts a key after delete (failed-turn retry path)', () => {
+    const s = new IdempotencyStore();
+    expect(s.markIfNew('m1')).toBe(true);
+    s.delete('m1');
+    expect(s.markIfNew('m1')).toBe(true);
+  });
+
   it('evicts oldest entries past the cap', () => {
     const s = new IdempotencyStore(60_000, 2);
     s.markIfNew('a');

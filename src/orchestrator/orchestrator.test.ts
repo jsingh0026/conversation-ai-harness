@@ -122,11 +122,15 @@ describe('Orchestrator', () => {
     expect(secondReqMessages[0]).toEqual({ role: 'user', content: 'first' });
   });
 
-  it('bails with a fallback after hitting max steps', async () => {
+  it('closes out with a fallback after the step budget, without running more tools', async () => {
     const crm = new MockCrmClient();
+    let runs = 0;
     const loopTool: AgentTool = {
       spec: { name: 'echo', description: 'e', parameters: z.object({}) },
-      run: async () => ({}),
+      run: async () => {
+        runs++;
+        return {};
+      },
     };
     // Always ask for a tool call → never terminates on its own.
     const provider = new StubProvider(() => toolCallResult([{ id: 't', name: 'echo', args: {} }]));
@@ -134,6 +138,43 @@ describe('Orchestrator', () => {
 
     const trace = await orch.runTurn(msg('loop'));
     expect(crm.lastSent()?.body).toMatch(/team member/i);
-    expect(trace.steps.filter((s) => s.type === 'provider_call')).toHaveLength(3);
+    expect(trace.budgetExhausted).toBe(true);
+    // 3 in-loop calls + 1 tool-less close-out call = 4 provider steps.
+    expect(trace.steps.filter((s) => s.type === 'provider_call')).toHaveLength(4);
+    // The tool must NOT run on the (over-budget) close-out — only the 3 loop steps.
+    expect(runs).toBe(3);
+  });
+
+  it('goes silent and does not persist a reply when a tool hands over mid-turn', async () => {
+    const crm = new MockCrmClient();
+    const history = new ConversationStore();
+    const handover: AgentTool = {
+      spec: { name: 'request_human_handover', description: 'h', parameters: z.object({}) },
+      run: async (_args, ctx) => {
+        await ctx.crm.setBotEnabled(ctx.conversationId, false);
+        return { handedOver: true };
+      },
+    };
+    const provider = new StubProvider([
+      toolCallResult([{ id: 't1', name: 'request_human_handover', args: {} }]),
+      textResult('a reply the customer must never receive'),
+    ]);
+    const orch = new Orchestrator({ provider, crm, tools: [handover], history });
+
+    const trace = await orch.runTurn(msg('get me a human'));
+
+    expect(crm.sent).toHaveLength(0); // orchestrator sent nothing
+    expect(trace.reply).toBeNull();
+    expect(trace.decision).toBe('handover');
+    // Only the customer's message is retained — no phantom assistant turn.
+    expect(history.get('c1')).toEqual([{ role: 'user', content: 'get me a human' }]);
+  });
+
+  it('sends an empty-text reply as the fallback, not a blank message', async () => {
+    const crm = new MockCrmClient();
+    const provider = new StubProvider([textResult('   ')]);
+    const orch = new Orchestrator({ provider, crm });
+    await orch.runTurn(msg('hi'));
+    expect(crm.lastSent()?.body).toMatch(/team member/i);
   });
 });
