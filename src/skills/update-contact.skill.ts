@@ -12,7 +12,11 @@ const ParamsSchema = z
     name: z.string().min(1).optional().describe('The customer\'s full name.'),
     email: z.string().email().optional().describe('The customer\'s email address.'),
     phone: z.string().min(3).optional().describe('The customer\'s phone number.'),
-    budget: z.number().positive().optional().describe('Purchase/rental budget as a number (no symbols).'),
+    budget: z.coerce
+      .number()
+      .positive()
+      .optional()
+      .describe('Purchase/rental budget as a number (no currency symbols).'),
     preferredTime: z
       .string()
       .min(1)
@@ -32,7 +36,7 @@ export function createUpdateContactSkill(): AgentTool {
   return {
     spec: { name: 'update_contact_field', description: DESCRIPTION, parameters: ParamsSchema },
     run: async (args, ctx) => {
-      const input = args as z.infer<typeof ParamsSchema>;
+      const input = ParamsSchema.parse(args);
       const fields: Record<string, string | number> = {};
       if (input.name !== undefined) fields.name = input.name;
       if (input.email !== undefined) fields.email = input.email;

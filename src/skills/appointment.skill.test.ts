@@ -30,6 +30,22 @@ describe('appointment skills', () => {
     expect(out.slots).toHaveLength(2);
   });
 
+  it('filters out slots outside the requested part-of-day window', async () => {
+    // A morning slot + an afternoon slot; asking for "afternoon" must exclude the morning one.
+    const morning = {
+      startTime: new Date(2026, 7, 9, 9, 0, 0).toISOString(),
+      endTime: new Date(2026, 7, 9, 9, 30, 0).toISOString(),
+    };
+    const crm = new MockCrmClient({ slots: { [CAL]: [morning, ...slots] } });
+    const { getSlots, ctx } = skills(crm);
+    const out = (await getSlots.run({ when: 'tomorrow afternoon' }, ctx)) as {
+      available: boolean;
+      slots: { startTime: string }[];
+    };
+    expect(out.slots).toHaveLength(2); // only the two afternoon slots
+    expect(out.slots.some((s) => s.startTime === morning.startTime)).toBe(false);
+  });
+
   it('reports no availability gracefully', async () => {
     const crm = new MockCrmClient({ slots: { [CAL]: [] } });
     const { getSlots, ctx } = skills(crm);

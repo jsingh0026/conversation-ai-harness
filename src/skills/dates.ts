@@ -39,10 +39,10 @@ const atHour = (d: Date, h: number): Date => {
   return c;
 };
 
-/** Days until the next occurrence of `targetDow` (1–7; today counts as next week). */
+/** Days until the next occurrence of `targetDow` (0 = today, so a bare weekday
+ * means the soonest one — the past-of-day is dropped by the future clamp). */
 function daysUntilWeekday(now: Date, targetDow: number): number {
-  const diff = (targetDow - now.getDay() + 7) % 7;
-  return diff === 0 ? 7 : diff;
+  return (targetDow - now.getDay() + 7) % 7;
 }
 
 export function resolveDateRange(when: string, now: Date): DateRange | null {
@@ -50,11 +50,15 @@ export function resolveDateRange(when: string, now: Date): DateRange | null {
 
   // Multi-day ranges resolve and return directly.
   if (w.includes('this week')) {
-    const to = endOfDay(addDays(startOfDay(now), 6 - now.getDay())); // through Saturday
-    return clampFuture({ from: startOfDay(now), to }, now);
+    // Now through the end of the coming Sunday, always at least ~2 days so it's
+    // never a degenerate single partial day (e.g. asked on a Saturday).
+    const daysToSunday = (7 - now.getDay()) % 7;
+    const to = endOfDay(addDays(now, Math.max(daysToSunday, 1)));
+    return clampFuture({ from: now, to }, now);
   }
   if (w.includes('next week')) {
-    const nextMonday = startOfDay(addDays(now, daysUntilWeekday(now, 1)));
+    const toMonday = daysUntilWeekday(now, 1);
+    const nextMonday = startOfDay(addDays(now, toMonday === 0 ? 7 : toMonday));
     return clampFuture({ from: nextMonday, to: endOfDay(addDays(nextMonday, 6)) }, now);
   }
 
@@ -83,7 +87,14 @@ export function resolveDateRange(when: string, now: Date): DateRange | null {
   return clampFuture({ from, to }, now);
 }
 
-/** Never offer times in the past. */
-function clampFuture(range: DateRange, now: Date): DateRange {
-  return { from: range.from < now ? now : range.from, to: range.to };
+/**
+ * Never offer times in the past. If clamping `from` up to `now` leaves the
+ * window empty or inverted (the whole window already passed today, e.g. "today
+ * afternoon" asked at 6pm), return null so the caller falls back to a forward
+ * window rather than passing from > to to the calendar.
+ */
+function clampFuture(range: DateRange, now: Date): DateRange | null {
+  const from = range.from < now ? now : range.from;
+  if (from >= range.to) return null;
+  return { from, to: range.to };
 }

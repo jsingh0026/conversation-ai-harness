@@ -27,10 +27,23 @@ describe('resolveDateRange', () => {
     expect(r.to.getHours()).toBe(12);
   });
 
-  it('resolves "this week" as a multi-day range through the weekend', () => {
-    const r = resolveDateRange('this week', NOW)!;
+  it('resolves "this week" as a genuine multi-day range (never a single collapsed day)', () => {
+    const r = resolveDateRange('this week', NOW)!; // NOW is a Saturday
     expect(r.to.getTime()).toBeGreaterThan(r.from.getTime());
-    expect(r.to.getDate()).toBeGreaterThanOrEqual(8);
+    // Spans past today into at least the next day.
+    expect(r.to.getDate()).toBeGreaterThan(r.from.getDate());
+  });
+
+  it('treats a bare weekday as the soonest one, including today', () => {
+    // NOW is Saturday morning; "saturday" should mean today, not next week.
+    const r = resolveDateRange('saturday', NOW)!;
+    expect(r.from.getDate()).toBe(8);
+  });
+
+  it('returns null when the requested window already passed today', () => {
+    const evening = new Date(2026, 7, 8, 18, 0, 0); // 6pm
+    // "today afternoon" (12–17) is entirely in the past at 6pm → null (caller falls back).
+    expect(resolveDateRange('today afternoon', evening)).toBeNull();
   });
 
   it('returns null for unrecognized input', () => {

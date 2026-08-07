@@ -52,25 +52,30 @@ function createGetSlotsSkill(config: AppointmentConfig): AgentTool {
       const { when, from, to } = SlotsParams.parse(args);
       const now = clock();
 
+      const defaultTo = new Date(now.getTime() + DEFAULT_WINDOW_DAYS * 86_400_000);
       let fromDate: Date;
       let toDate: Date;
       if (from) {
         fromDate = new Date(from);
         toDate = to ? new Date(to) : new Date(fromDate.getTime() + DEFAULT_WINDOW_DAYS * 86_400_000);
+        if (toDate <= fromDate) toDate = new Date(fromDate.getTime() + DEFAULT_WINDOW_DAYS * 86_400_000);
       } else if (when) {
+        // A null range (unrecognized or wholly-past) falls back to a forward window.
         const range = resolveDateRange(when, now);
         fromDate = range?.from ?? now;
-        toDate = range?.to ?? new Date(now.getTime() + DEFAULT_WINDOW_DAYS * 86_400_000);
+        toDate = range?.to ?? defaultTo;
       } else {
         fromDate = now;
-        toDate = new Date(now.getTime() + DEFAULT_WINDOW_DAYS * 86_400_000);
+        toDate = defaultTo;
       }
 
-      const slots = await ctx.crm.getFreeSlots(
-        calendarId,
-        fromDate.toISOString(),
-        toDate.toISOString(),
-      );
+      const raw = await ctx.crm.getFreeSlots(calendarId, fromDate.toISOString(), toDate.toISOString());
+      // Defensively keep only slots inside the requested window — don't trust the
+      // backend to honor the exact hour range (real calendars may be day-granular).
+      const slots = raw.filter((s) => {
+        const t = Date.parse(s.startTime);
+        return t >= fromDate.getTime() && t <= toDate.getTime();
+      });
       if (slots.length === 0) {
         return { available: false, message: 'No open times in that range. Try another day?' };
       }

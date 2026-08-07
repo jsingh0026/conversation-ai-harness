@@ -36,19 +36,21 @@ export function createHandoverSkill(config: HandoverConfig = {}): AgentTool {
   return {
     spec: { name: 'request_human_handover', description: DESCRIPTION, parameters: ParamsSchema },
     run: async (args, ctx) => {
-      const { reason, finalMessage } = args as z.infer<typeof ParamsSchema>;
+      const { reason, finalMessage } = ParamsSchema.parse(args);
 
-      // Stop the bot first so no later step (or race) sends an automated reply.
-      await ctx.crm.setBotEnabled(ctx.conversationId, false);
-      await ctx.crm.addTag(ctx.contactId, tag);
-      if (ownerUserId) await ctx.crm.assignOwner(ctx.contactId, ownerUserId);
-
+      // Send the final message FIRST. If the send fails, we haven't disabled the
+      // bot yet, so the turn errors and can be retried — avoiding a silent
+      // dead-end where the bot is off but the customer was never told.
       await ctx.crm.sendMessage({
         conversationId: ctx.conversationId,
         contactId: ctx.contactId,
         channel: ctx.channel,
         body: finalMessage,
       });
+
+      await ctx.crm.setBotEnabled(ctx.conversationId, false);
+      await ctx.crm.addTag(ctx.contactId, tag);
+      if (ownerUserId) await ctx.crm.assignOwner(ctx.contactId, ownerUserId);
 
       return { handedOver: true, reason, tag };
     },

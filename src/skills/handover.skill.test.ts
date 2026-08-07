@@ -28,6 +28,21 @@ describe('request_human_handover skill', () => {
     expect((await crm.getContact('ct1')).assignedUserId).toBe('user-9');
   });
 
+  it('does not disable the bot if the final message fails to send', async () => {
+    const crm = new MockCrmClient();
+    crm.upsertContact({ id: 'ct1' });
+    crm.sendMessage = async () => {
+      throw new Error('channel down');
+    };
+    const skill = createHandoverSkill();
+
+    await expect(
+      skill.run({ reason: 'explicit_request', finalMessage: 'hi' }, makeToolContext({ crm })),
+    ).rejects.toThrow('channel down');
+    // Bot must remain enabled so the turn can be retried (no silent dead-end).
+    expect(await crm.isBotEnabled('c1')).toBe(true);
+  });
+
   it('constrains the reason to the allowed set', () => {
     const skill = createHandoverSkill();
     expect(skill.spec.parameters.safeParse({ reason: 'because', finalMessage: 'x' }).success).toBe(
