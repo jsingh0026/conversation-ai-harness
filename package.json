@@ -17,9 +17,14 @@
     "test": "vitest run",
     "ingest": "tsx src/rag/ingest.ts",
     "eval": "tsx evals/run.ts",
-    "trace": "tsx src/trace/cli.ts"
+    "trace": "tsx src/trace/cli.ts",
+    "providers:smoke": "tsx src/providers/smoke.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.35",
+    "@ai-sdk/google": "^4.0.38",
+    "@ai-sdk/openai": "^4.0.35",
+    "ai": "^7.0.57",
     "dotenv": "^17.4.2",
     "fastify": "^5.11.2",
     "pino": "^10.3.1",
@@ -37,6 +42,8 @@
     "vitest": "^4.1.10"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
