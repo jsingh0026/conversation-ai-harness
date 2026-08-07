@@ -5,6 +5,7 @@ import { createCrmClient } from '../crm/index.js';
 import type { CrmClient } from '../crm/types.js';
 import { createOrchestratorStack, type OrchestratorStack } from '../orchestrator/index.js';
 import { createKnowledgeTool } from '../rag/index.js';
+import { createSkills } from '../skills/index.js';
 import { normalizeWebhook, type HighLevelInboundWebhook } from './webhook.js';
 
 export interface AppDeps {
@@ -14,8 +15,8 @@ export interface AppDeps {
 
 function defaultDeps(): AppDeps {
   const crm = createCrmClient();
-  // RAG retrieval is registered as a tool the agent may call; skills join in Phase 4.
-  const tools = [createKnowledgeTool()];
+  // RAG retrieval + skills are all tools the agent may call — one flat registry.
+  const tools = [createKnowledgeTool(), ...createSkills()];
   const stack = createOrchestratorStack(crm, tools, { businessName: 'Lumina Realty' });
   return { crm, stack };
 }

@@ -1,3 +1,4 @@
+import { SlotTakenError } from './errors.js';
 import type {
   Appointment,
   CalendarSlot,
@@ -70,7 +71,14 @@ export class MockCrmClient implements CrmClient {
     fields: Record<string, string | number>,
   ): Promise<Contact> {
     const c = this.contacts.get(contactId) ?? this.upsertContact({ id: contactId });
-    c.fields = { ...c.fields, ...fields };
+    for (const [key, value] of Object.entries(fields)) {
+      // Route standard fields to top-level; everything else is a custom field.
+      // (HighLevelClient does the equivalent mapping to real field IDs in Phase 7.)
+      if (key === 'name') c.name = String(value);
+      else if (key === 'email') c.email = String(value);
+      else if (key === 'phone') c.phone = String(value);
+      else c.fields[key] = value;
+    }
     this.contacts.set(contactId, c);
     return structuredClone(c);
   }
@@ -131,9 +139,5 @@ export class MockCrmClient implements CrmClient {
   }
 }
 
-export class SlotTakenError extends Error {
-  constructor(public readonly startTime: string) {
-    super(`Slot no longer available: ${startTime}`);
-    this.name = 'SlotTakenError';
-  }
-}
+// Re-export so existing imports from './mock.js' keep working.
+export { SlotTakenError } from './errors.js';

@@ -3,6 +3,7 @@ import { MockCrmClient } from './mock.js';
 import type { CrmClient } from './types.js';
 
 export * from './types.js';
+export { SlotTakenError } from './errors.js';
 export { MockCrmClient } from './mock.js';
 
 /**
