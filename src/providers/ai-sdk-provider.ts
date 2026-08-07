@@ -30,7 +30,9 @@ function readToolCall(tc: unknown): ToolCall {
 /**
  * The one LLMProvider implementation. All three providers are the same code
  * with a different AI SDK model handle — that's the point of the abstraction.
- * Error mapping and retry live here so every call is uniformly resilient.
+ * `generate()` maps SDK errors to typed errors and retries the retryable ones.
+ * `stream()` maps errors too but does NOT retry (a partial stream can't be
+ * transparently replayed); prefer `generate()` where resilience matters.
  */
 export class AiSdkProvider implements LLMProvider {
   constructor(
@@ -40,6 +42,7 @@ export class AiSdkProvider implements LLMProvider {
   ) {}
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    const tools = toToolSet(req.tools);
     return withRetry(
       async () => {
         try {
@@ -47,8 +50,9 @@ export class AiSdkProvider implements LLMProvider {
             model: this.handle,
             system: req.system,
             messages: toModelMessages(req.messages),
-            tools: toToolSet(req.tools),
-            toolChoice: req.toolChoice,
+            tools,
+            // Only send toolChoice when tools exist; otherwise the SDK warns.
+            toolChoice: tools ? req.toolChoice : undefined,
             temperature: req.temperature,
             maxOutputTokens: req.maxTokens,
           });
@@ -74,22 +78,21 @@ export class AiSdkProvider implements LLMProvider {
   }
 
   async *stream(req: GenerateRequest): AsyncIterable<StreamChunk> {
-    let res;
-    try {
-      res = streamText({
-        model: this.handle,
-        system: req.system,
-        messages: toModelMessages(req.messages),
-        tools: toToolSet(req.tools),
-        toolChoice: req.toolChoice,
-        temperature: req.temperature,
-        maxOutputTokens: req.maxTokens,
-      });
-      for await (const delta of res.textStream) {
-        yield { type: 'text', text: delta };
-      }
-    } catch (err) {
-      throw mapProviderError(err, this.name);
+    const tools = toToolSet(req.tools);
+    const res: ReturnType<typeof streamText> = streamText({
+      model: this.handle,
+      system: req.system,
+      messages: toModelMessages(req.messages),
+      tools,
+      toolChoice: tools ? req.toolChoice : undefined,
+      temperature: req.temperature,
+      maxOutputTokens: req.maxTokens,
+    });
+
+    // Note: res.textStream does NOT surface provider errors — a failed call
+    // rejects the settled promises below instead, which is where we map it.
+    for await (const delta of res.textStream) {
+      yield { type: 'text', text: delta };
     }
 
     try {
@@ -101,6 +104,8 @@ export class AiSdkProvider implements LLMProvider {
       ]);
       const normalizedCalls = (toolCalls ?? []).map(readToolCall);
       for (const tc of normalizedCalls) yield { type: 'tool-call', toolCall: tc };
+      // A mid-stream failure after a step started resolves with finishReason
+      // 'error' rather than rejecting; consumers of `done` should check it.
       yield {
         type: 'done',
         result: {

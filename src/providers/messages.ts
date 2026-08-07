@@ -1,4 +1,4 @@
-import { tool, type ModelMessage, type ToolSet } from 'ai';
+import { tool, type JSONValue, type ModelMessage, type ToolSet } from 'ai';
 import type { LlmMessage, ToolSpec } from '../llm/types.js';
 
 /**
@@ -29,7 +29,8 @@ export function toModelMessages(messages: LlmMessage[]): ModelMessage[] {
             type: 'tool-result' as const,
             toolCallId: tr.toolCallId,
             toolName: tr.name,
-            output: { type: 'json' as const, value: tr.result as never },
+            // Tool results in this harness are JSON-serializable skill outputs.
+            output: { type: 'json' as const, value: tr.result as JSONValue },
           })),
         };
     }

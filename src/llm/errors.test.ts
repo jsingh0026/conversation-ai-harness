@@ -38,9 +38,12 @@ describe('mapProviderError', () => {
     expect(e.retryable).toBe(true);
   });
 
-  it('maps 400 context-length messages to ContextLengthError', () => {
-    const e = mapProviderError(apiError(400, 'maximum context length exceeded'), 'claude');
-    expect(e).toBeInstanceOf(ContextLengthError);
+  it.each([
+    ['openai', 'This model maximum context length is 128000 tokens'],
+    ['claude', 'prompt is too long: 250000 tokens > 200000 maximum'],
+    ['gemini', 'The input token count exceeds the maximum number of tokens allowed'],
+  ] as const)('maps %s context-overflow phrasing to ContextLengthError', (provider, message) => {
+    expect(mapProviderError(apiError(400, message), provider)).toBeInstanceOf(ContextLengthError);
   });
 
   it('maps 5xx to TransientError', () => {

@@ -54,7 +54,19 @@ export class TransientError extends LLMError {
 /** Anything else from a provider we don't map more specifically. */
 export class ProviderError extends LLMError {}
 
-const CONTEXT_HINTS = ['context length', 'context window', 'maximum context', 'too many tokens'];
+// Substrings that signal a context-window overflow, across providers:
+// OpenAI ("maximum context length"), Anthropic ("prompt is too long"),
+// Gemini/others ("exceeds the maximum number of tokens", "input token count").
+const CONTEXT_HINTS = [
+  'context length',
+  'context window',
+  'maximum context',
+  'too many tokens',
+  'prompt is too long',
+  'input token count',
+  'maximum number of tokens',
+  'exceeds the maximum',
+];
 
 /**
  * Normalize any provider/SDK error into one of our typed errors so retry and
