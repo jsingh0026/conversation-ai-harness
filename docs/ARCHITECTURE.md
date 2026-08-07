@@ -41,7 +41,7 @@ Inbound webhook ──▶ │  Server (Fastify)                                 
                         │               │               │
                         └───────────────┴───────────────┴──▶ CrmClient (real | mock)
                                         │
-                                        └──▶ Trace collector ──▶ JSON + CLI viewer
+                                        └──▶ Trace collector ──▶ Langfuse | JSON + CLI
 ```
 
 ## 3. Key architectural decisions
@@ -148,8 +148,23 @@ Trace { turnId, conversationId, startedAt, latencyMs, tokens,
   reply }
 ```
 
-Emitted as structured JSON (file + stdout) with a small CLI pretty-printer (`npm run trace <id>`) and
-a `GET /traces/:id` route. Goal: answer "why did it say that?" in under a minute.
+**Viewing surfaces.** Our `Trace` is the canonical, self-owned record. It fans out to viewers
+through a pluggable `TraceExporter` interface (same extensibility philosophy as providers/skills —
+adding a backend is registration, not core edits):
+
+- **Langfuse (primary UI):** each turn is exported as a Langfuse trace, with one nested span per
+  step — `provider_call` (model, prompt, tokens, latency), `retrieval` (query + chunks + scores),
+  `skill` (input/output + CRM calls). This gives a polished LLM-native timeline, token/cost/latency
+  dashboards, and the ability to attach eval scores to real turns — the reviewer clicks a turn and
+  sees exactly *why the agent said that*. Runs against **self-hosted Langfuse** (`docker compose up`,
+  OSS, no signup) or Langfuse Cloud via env config; `LANGFUSE_*` keys are optional — absent = disabled.
+- **Local JSON + CLI (always-on fallback):** every trace is also written as JSON (one file per turn,
+  gitignored) and printable via `npm run trace <id>`. This keeps the harness fully inspectable with
+  **zero external infra**, drives the eval suite's latency/groundedness numbers directly, and means a
+  reviewer who doesn't want to stand up Langfuse still gets the full picture.
+
+Goal either way: answer "why did it say that?" in under a minute. The Langfuse exporter is an
+opt-in enhancement layered on the canonical Trace — we never depend on it for correctness or evals.
 
 ## 4. Module layout
 
@@ -163,7 +178,7 @@ src/
   rag/            Embedder, chunker, vector store, retriever, ingest script
   skills/         Skill interface + registry + updateContact / handover / appointment
   crm/            CrmClient interface + HighLevelClient + MockCrmClient
-  trace/          Trace types, collector, emitter, pretty-printer
+  trace/          Trace types, collector, TraceExporter interface, Langfuse + JSON/CLI exporters
   util/           logger, async mutex, idempotency LRU, relative-date parsing
 evals/
   cases/          *.json datasets per behavior (20–30 each)
@@ -183,7 +198,7 @@ docs/             ASSIGNMENT.md, ARCHITECTURE.md, SETUP.md
 | **2. Orchestration** | tool-use loop, idempotency, per-convo queue, trace collector, mock send | chit-chat turn goes webhook→reply, traced, under latency target |
 | **3. RAG** | KB docs, chunk/embed/index, `search_kb` tool, threshold + decline | grounded answer + correct decline; chit-chat skips retrieval |
 | **4. Skills** | updateContact, handover (bot-off + tag/owner), appointment booking (slots, relative dates, races) | all three fire correctly; negatives don't fire |
-| **5. Trace polish** | full per-step trace, `/traces/:id`, CLI viewer | "why did it say that" answerable in <1 min |
+| **5. Trace polish** | full per-step trace, `TraceExporter` seam, Langfuse exporter (self-host compose) + JSON/CLI fallback | reviewer sees a turn's full timeline in Langfuse (or CLI) in <1 min |
 | **6. Evals** | datasets (20–30/behavior), runners, per-provider report, latency bench | `npm run eval` prints table + failures across 3 providers |
 | **7. Sandbox** | HighLevel OAuth, real Conversations/Contacts/Calendars, webhook registration, `SETUP.md` | real message round-trips in sandbox |
 | **8. Docs & demo** | README (architecture, trade-offs, Team-of-One), eval table, functional-vs-mocked, demo script | all deliverables present |
@@ -197,5 +212,7 @@ testable/reproducible offline (except live LLM calls). Phase 7 swaps in the real
 - SQLite (`sqlite-vec`) vs. flat in-memory JSON for the vector index.
 - Serialize-per-conversation vs. debounce/coalesce for rapid messages.
 - LLM-judge groundedness vs. deterministic fact checks in evals.
+- Langfuse as primary trace UI (opt-in via env; self-host or cloud) vs. the always-on JSON/CLI
+  fallback — we keep both so the harness stays inspectable with zero external infra.
 - Streaming is normalized in the provider layer but the CRM send is a single final message; streaming
   mainly reduces internal time-to-first-token. Documented, not user-facing.
