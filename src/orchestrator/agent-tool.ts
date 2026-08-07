@@ -6,6 +6,8 @@ import type { TraceCollector } from '../trace/collector.js';
 export interface ToolContext {
   conversationId: string;
   contactId: string;
+  /** Channel the customer is on, so a skill can reply on the same one. */
+  channel: string;
   crm: CrmClient;
   trace: TraceCollector;
 }
@@ -17,6 +19,12 @@ export interface ToolContext {
  */
 export interface AgentTool<Args = unknown, Out = unknown> {
   readonly spec: ToolSpec;
+  /**
+   * When true, the tool records its own detailed trace step (e.g. retrieval
+   * records chunks + scores), so the orchestrator skips the generic tool step
+   * on success to avoid duplicating output. Errors are still recorded.
+   */
+  readonly selfRecords?: boolean;
   run(args: Args, ctx: ToolContext): Promise<Out>;
 }
 

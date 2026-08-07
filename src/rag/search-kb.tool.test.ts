@@ -8,19 +8,22 @@ import { createSearchKbTool } from './search-kb.tool.js';
 import { VectorStore } from './store.js';
 import type { EmbeddedChunk } from './types.js';
 
-async function toolAndCtx(threshold = 0.3) {
+async function toolAndCtx() {
   const embedder = new FakeEmbedder();
   const text = 'Our seller commission is five percent of the sale price.';
   const [embedding] = await embedder.embedMany([text]);
   const chunk: EmbeddedChunk = { id: 'fees#0', docId: 'fees', title: 'Fees', text, embedding: embedding! };
   const retriever = new Retriever(embedder);
   retriever.useStore(new VectorStore([chunk]));
-  // Tighten via env default is awkward in tests; retriever.retrieve reads env
-  // threshold, so seed a query that clears the default 0.35.
-  void threshold;
 
   const trace = new TraceCollector({ conversationId: 'c1', contactId: 'ct1', input: 'q' });
-  const ctx: ToolContext = { conversationId: 'c1', contactId: 'ct1', crm: new MockCrmClient(), trace };
+  const ctx: ToolContext = {
+    conversationId: 'c1',
+    contactId: 'ct1',
+    channel: 'SMS',
+    crm: new MockCrmClient(),
+    trace,
+  };
   return { tool: createSearchKbTool(retriever), ctx, trace };
 }
 

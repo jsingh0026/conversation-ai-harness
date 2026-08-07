@@ -1,8 +1,11 @@
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { FakeEmbedder } from '../testkit/fake-embedder.js';
 import { Retriever } from './retriever.js';
 import { VectorStore } from './store.js';
-import type { EmbeddedChunk } from './types.js';
+import type { EmbeddedChunk, KbIndex } from './types.js';
 
 async function seededRetriever(threshold = 0.3) {
   const embedder = new FakeEmbedder();
@@ -44,6 +47,23 @@ describe('Retriever', () => {
     const retriever = new Retriever(new FakeEmbedder());
     retriever.useStore(new VectorStore([]));
     const result = await retriever.retrieve('anything');
+    expect(result.grounded).toBe(false);
+  });
+
+  it('disables retrieval when the on-disk index was built with a different embed model', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kbidx-'));
+    const path = join(dir, 'kb.json');
+    const index: KbIndex = {
+      embedModel: 'some-other-model', // ≠ FakeEmbedder's model
+      dims: 3,
+      docs: {},
+      chunks: [{ id: 'a#0', docId: 'a', title: 'a', text: 'commission fees', embedding: [1, 0, 0] }],
+    };
+    await writeFile(path, JSON.stringify(index));
+
+    const retriever = new Retriever(new FakeEmbedder(), path);
+    const result = await retriever.retrieve('commission fees');
+    // Model mismatch → store treated as unusable → no grounding (not garbage scores).
     expect(result.grounded).toBe(false);
   });
 });

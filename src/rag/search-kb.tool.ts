@@ -26,8 +26,10 @@ const ParamsSchema = z.object({
 export function createSearchKbTool(retriever: Retriever): AgentTool {
   return {
     spec: { name: 'search_knowledge_base', description: DESCRIPTION, parameters: ParamsSchema },
+    // Records its own retrieval step (chunks + scores); no generic tool step.
+    selfRecords: true,
     run: async (args, ctx) => {
-      const { query } = args as z.infer<typeof ParamsSchema>;
+      const { query } = ParamsSchema.parse(args);
       const t0 = Date.now();
       const result = await retriever.retrieve(query);
 

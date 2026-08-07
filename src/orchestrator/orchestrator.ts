@@ -84,6 +84,7 @@ export class Orchestrator {
       const reply = await this.runLoop(system, messages, {
         conversationId: message.conversationId,
         contactId: message.contactId,
+        channel: message.channel,
         crm: this.crm,
         trace,
       });
@@ -191,13 +192,16 @@ export class Orchestrator {
 
     try {
       const output = await tool.run(parsed.data, ctx);
-      ctx.trace.addToolStep({
-        name: call.name,
-        input: parsed.data,
-        output,
-        latencyMs: Date.now() - t0,
-        ok: true,
-      });
+      // Self-recording tools (e.g. retrieval) already logged a richer step.
+      if (!tool.selfRecords) {
+        ctx.trace.addToolStep({
+          name: call.name,
+          input: parsed.data,
+          output,
+          latencyMs: Date.now() - t0,
+          ok: true,
+        });
+      }
       return { toolCallId: call.id, name: call.name, result: output };
     } catch (err) {
       const output = { error: err instanceof Error ? err.message : String(err) };

@@ -23,14 +23,16 @@ export function chunkMarkdown(docId: string, content: string): Chunk[] {
   for (const section of sections) {
     const body = section.body.trim();
     if (!body) continue;
-    for (const piece of slidingWindow(body)) {
+    // Prefix the heading so the embedding captures the section topic. Budget for
+    // it in the window size so the final text stays within MAX_CHARS.
+    const prefix = section.heading ? `${section.heading}\n` : '';
+    for (const piece of slidingWindow(body, MAX_CHARS - prefix.length)) {
       chunks.push({
         id: `${docId}#${chunks.length}`,
         docId,
         title,
         section: section.heading,
-        // Prefix the heading so the embedding captures the section topic.
-        text: section.heading ? `${section.heading}\n${piece}` : piece,
+        text: prefix + piece,
       });
     }
   }
@@ -70,19 +72,19 @@ function docTitleFallback(content: string): string {
   return firstLine?.trim().slice(0, 80) ?? 'Untitled';
 }
 
-/** Split text into ≤MAX_CHARS windows on paragraph/sentence boundaries with overlap. */
-function slidingWindow(text: string): string[] {
-  if (text.length <= MAX_CHARS) return [text];
+/** Split text into ≤maxChars windows on paragraph/sentence boundaries with overlap. */
+function slidingWindow(text: string, maxChars: number = MAX_CHARS): string[] {
+  if (text.length <= maxChars) return [text];
 
   const pieces: string[] = [];
   let start = 0;
   while (start < text.length) {
-    let end = Math.min(start + MAX_CHARS, text.length);
+    let end = Math.min(start + maxChars, text.length);
     if (end < text.length) {
       // Prefer to break at a paragraph or sentence boundary near the window end.
       const slice = text.slice(start, end);
       const brk = Math.max(slice.lastIndexOf('\n\n'), slice.lastIndexOf('. '));
-      if (brk > MAX_CHARS * 0.5) end = start + brk + 1;
+      if (brk > maxChars * 0.5) end = start + brk + 1;
     }
     pieces.push(text.slice(start, end).trim());
     if (end >= text.length) break;

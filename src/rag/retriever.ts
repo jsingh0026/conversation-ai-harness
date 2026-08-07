@@ -29,17 +29,34 @@ export class Retriever {
     private readonly indexPath = INDEX_PATH,
   ) {}
 
-  /** Load the on-disk index once (lazily). Missing index → empty store. */
+  /**
+   * Load the on-disk index once (lazily). A missing index is NOT cached, so a
+   * later `pnpm ingest` is picked up without a restart. An index built with a
+   * different embed model is rejected — querying it would score a query vector
+   * against vectors from an incompatible embedding space (silent garbage).
+   */
   private async ensureLoaded(): Promise<VectorStore> {
     if (this.loaded && this.store) return this.store;
+
+    let raw: string;
     try {
-      const raw = await readFile(this.indexPath, 'utf8');
-      const index = JSON.parse(raw) as KbIndex;
+      raw = await readFile(this.indexPath, 'utf8');
+    } catch {
+      // Don't cache — retry on the next call so ingest-after-boot works.
+      logger.warn({ indexPath: this.indexPath }, 'no KB index found — run `pnpm ingest`');
+      return new VectorStore([]);
+    }
+
+    const index = JSON.parse(raw) as KbIndex;
+    if (index.embedModel !== this.embedder.model) {
+      logger.error(
+        { indexModel: index.embedModel, queryModel: this.embedder.model },
+        'KB index embed model differs from the query embedder — re-run `pnpm ingest`; retrieval disabled',
+      );
+      this.store = new VectorStore([]);
+    } else {
       this.store = new VectorStore(index.chunks);
       logger.info({ chunks: index.chunks.length, model: index.embedModel }, 'KB index loaded');
-    } catch {
-      this.store = new VectorStore([]);
-      logger.warn({ indexPath: this.indexPath }, 'no KB index found — run `pnpm ingest`');
     }
     this.loaded = true;
     return this.store;
@@ -58,7 +75,7 @@ export class Retriever {
 
     if (store.size === 0) return { query, grounded: false, chunks: [] };
 
-    const [queryEmbedding] = await Promise.all([this.embedder.embed(query)]);
+    const queryEmbedding = await this.embedder.embed(query);
     const top = store.search(queryEmbedding, k);
     const grounded = top.filter((c) => c.score >= threshold);
 

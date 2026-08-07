@@ -37,6 +37,12 @@ async function main(): Promise<void> {
 
   const embedder = createEmbedder();
   const existing = await loadExisting();
+  // A different embedding model produces incompatible vectors — never reuse
+  // across models. Treat a model change as a full re-embed.
+  const modelChanged = existing !== undefined && existing.embedModel !== embedder.model;
+  if (modelChanged) {
+    console.log(`Embed model changed (${existing!.embedModel} → ${embedder.model}); re-embedding all docs.`);
+  }
   const existingByDoc = new Map<string, EmbeddedChunk[]>();
   for (const c of existing?.chunks ?? []) {
     const list = existingByDoc.get(c.docId) ?? [];
@@ -55,7 +61,8 @@ async function main(): Promise<void> {
     const hash = sha256(content);
     docs[docId] = { hash };
 
-    const unchanged = existing?.docs[docId]?.hash === hash && existingByDoc.has(docId);
+    const unchanged =
+      !modelChanged && existing?.docs[docId]?.hash === hash && existingByDoc.has(docId);
     if (unchanged) {
       finalChunks.push(...existingByDoc.get(docId)!);
       reusedDocs++;
@@ -73,6 +80,12 @@ async function main(): Promise<void> {
   }
 
   const dims = finalChunks[0]?.embedding.length ?? 0;
+  const mixedDims = finalChunks.find((c) => c.embedding.length !== dims);
+  if (mixedDims) {
+    throw new Error(
+      `Inconsistent embedding dimensions (${mixedDims.embedding.length} vs ${dims}) — aborting to avoid a corrupt index.`,
+    );
+  }
   const index: KbIndex = { embedModel: embedder.model, dims, docs, chunks: finalChunks };
 
   await mkdir(dirname(INDEX_PATH), { recursive: true });

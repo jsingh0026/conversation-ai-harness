@@ -101,11 +101,12 @@ export class TraceCollector {
   }
 }
 
-/** Infer the headline decision from which tools fired, when not set explicitly. */
+/** Infer the headline decision from which steps fired, when not set explicitly. */
 export function inferDecision(steps: TraceStep[]): TraceDecision {
   const toolNames = steps.filter((s): s is ToolStep => s.type === 'tool').map((s) => s.name);
-  if (toolNames.length === 0) return 'chitchat';
   if (toolNames.includes('request_human_handover')) return 'handover';
-  if (toolNames.includes('search_knowledge_base')) return 'knowledge';
+  // Retrieval records its own step (not a generic tool step), so check for it.
+  if (steps.some((s) => s.type === 'retrieval')) return 'knowledge';
+  if (toolNames.length === 0) return 'chitchat';
   return `skill:${toolNames[0]}`;
 }
