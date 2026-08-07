@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TraceCollector } from './collector.js';
-import { fanOut } from './emit.js';
+import { fanOut, selectExporters } from './emit.js';
 import type { TraceExporter } from './exporter.js';
 import { JsonFileExporter } from './exporters/json-file.js';
 import type { Trace } from './types.js';
@@ -26,7 +26,8 @@ describe('fanOut', () => {
     });
     const trace = sampleTrace();
     await fanOut(trace, [make('a'), make('b')]);
-    expect(got).toEqual([`a:${trace.turnId}`, `b:${trace.turnId}`]);
+    // Assert delivery to both (not order — Promise.all gives no completion order).
+    expect(new Set(got)).toEqual(new Set([`a:${trace.turnId}`, `b:${trace.turnId}`]));
   });
 
   it('isolates a failing exporter so others still run', async () => {
@@ -45,6 +46,27 @@ describe('fanOut', () => {
     };
     await expect(fanOut(sampleTrace(), [thrower, ok])).resolves.toBeUndefined();
     expect(ranSecond).toBe(true);
+  });
+});
+
+describe('selectExporters', () => {
+  const names = (list: TraceExporter[]) => list.map((e) => e.name);
+
+  it('always includes the console summary, and JSON files outside test', () => {
+    expect(names(selectExporters({ isTest: false }))).toEqual(['console', 'json-file']);
+  });
+
+  it('omits JSON files under test', () => {
+    expect(names(selectExporters({ isTest: true }))).toEqual(['console']);
+  });
+
+  it('adds Langfuse only when configured', () => {
+    const withLf = selectExporters({
+      isTest: false,
+      langfuse: { publicKey: 'pk', secretKey: 'sk' },
+    });
+    expect(names(withLf)).toContain('langfuse');
+    expect(names(selectExporters({ isTest: false }))).not.toContain('langfuse');
   });
 });
 

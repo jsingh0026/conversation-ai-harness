@@ -9,4 +9,6 @@ import type { Trace } from './types.js';
 export interface TraceExporter {
   readonly name: string;
   export(trace: Trace): Promise<void>;
+  /** Flush + close on process shutdown (e.g. drain a batched network client). */
+  shutdown?(): Promise<void>;
 }

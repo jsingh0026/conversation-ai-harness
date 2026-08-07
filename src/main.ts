@@ -1,6 +1,7 @@
 import { env } from './config/env.js';
 import { logger } from './util/logger.js';
 import { buildApp } from './server/app.js';
+import { shutdownTracing } from './trace/emit.js';
 
 async function main(): Promise<void> {
   const app = buildApp();
@@ -18,7 +19,10 @@ async function main(): Promise<void> {
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
       logger.info({ signal }, 'shutting down');
-      void app.close().then(() => process.exit(0));
+      void app
+        .close()
+        .then(() => shutdownTracing())
+        .then(() => process.exit(0));
     });
   }
 }

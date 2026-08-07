@@ -53,16 +53,23 @@ async function printList(): Promise<void> {
   }
   console.log(bold(`\nRecent turns (${files.length}):\n`));
   for (const { id } of files.slice(0, 25)) {
-    const t = await loadTrace(id);
-    const reply = t.reply ? truncate(t.reply.replace(/\s+/g, ' '), 60) : dim('(no reply)');
-    console.log(
-      `  ${cyan(id)}  ${decisionColor(t.decision)}  ${dim(`${t.latencyMs}ms`)}  ${reply}`,
-    );
+    // Isolate per-file failures (a truncated mid-write file, corrupt JSON, or a
+    // race delete) so one bad trace can't break the whole listing.
+    try {
+      const t = await loadTrace(id);
+      const reply = t.reply ? truncate(t.reply.replace(/\s+/g, ' '), 60) : dim('(no reply)');
+      console.log(
+        `  ${cyan(id)}  ${decisionColor(t.decision)}  ${dim(`${t.latencyMs ?? 0}ms`)}  ${reply}`,
+      );
+    } catch {
+      console.log(`  ${dim(id)}  ${red('(unreadable)')}`);
+    }
   }
   console.log(dim('\nRun `pnpm trace <turnId>` for the full timeline.\n'));
 }
 
-function decisionColor(decision: string): string {
+function decisionColor(decision: string | undefined): string {
+  if (!decision) return dim('?');
   if (decision === 'error') return red(decision);
   if (decision === 'handover') return yellow(decision);
   if (decision.startsWith('skill:') || decision === 'knowledge') return green(decision);
@@ -105,12 +112,13 @@ async function printTrace(id: string): Promise<void> {
     return;
   }
 
+  const tok = t.tokens ?? { inputTokens: 0, outputTokens: 0 };
   console.log('\n' + bold('━'.repeat(64)));
   console.log(`${bold(t.turnId)}   ${decisionColor(t.decision)}`);
   console.log(
     dim(
-      `latency ${t.latencyMs}ms   tokens ${t.tokens.inputTokens + t.tokens.outputTokens} ` +
-        `(in ${t.tokens.inputTokens} / out ${t.tokens.outputTokens})   ${t.startedAt}`,
+      `latency ${t.latencyMs ?? 0}ms   tokens ${tok.inputTokens + tok.outputTokens} ` +
+        `(in ${tok.inputTokens} / out ${tok.outputTokens})   ${t.startedAt}`,
     ),
   );
   console.log(dim(`conversation ${t.conversationId}   contact ${t.contactId}`));
@@ -119,10 +127,10 @@ async function printTrace(id: string): Promise<void> {
 
   console.log('\n' + bold('CUSTOMER: ') + t.input);
   console.log('\n' + bold('SYSTEM PROMPT:'));
-  console.log(dim(truncate(t.system, 600)));
+  console.log(dim(truncate(t.system ?? '', 600)));
 
   console.log('\n' + bold('STEPS:'));
-  t.steps.forEach((s, idx) => {
+  (t.steps ?? []).forEach((s, idx) => {
     const i = idx + 1;
     if (s.type === 'provider_call') printProviderStep(i, s);
     else if (s.type === 'retrieval') printRetrievalStep(i, s);
@@ -144,4 +152,7 @@ async function main(): Promise<void> {
   return printTrace(arg);
 }
 
-void main();
+void main().catch((err) => {
+  console.error(red(err instanceof Error ? err.message : String(err)));
+  process.exitCode = 1;
+});

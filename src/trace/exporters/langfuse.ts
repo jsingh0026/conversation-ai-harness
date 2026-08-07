@@ -83,10 +83,12 @@ export class LangfuseExporter implements TraceExporter {
         });
       }
     }
+    // Event creation is fire-and-forget (batched by the SDK). We deliberately do
+    // NOT flush per turn — that would drain the whole shared buffer and add a
+    // network round-trip to every turn's latency. Draining happens on shutdown().
+  }
 
-    // Flush this turn's events without blocking indefinitely.
-    await this.client.flushAsync().catch((err) => {
-      logger.warn({ err }, 'langfuse flush failed');
-    });
+  async shutdown(): Promise<void> {
+    await this.client.shutdownAsync().catch((err) => logger.warn({ err }, 'langfuse shutdown failed'));
   }
 }
