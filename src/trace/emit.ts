@@ -1,35 +1,47 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { env } from '../config/env.js';
 import { logger } from '../util/logger.js';
+import type { TraceExporter } from './exporter.js';
+import { ConsoleSummaryExporter } from './exporters/console.js';
+import { JsonFileExporter } from './exporters/json-file.js';
+import { LangfuseExporter } from './exporters/langfuse.js';
 import type { Trace } from './types.js';
 
-const TRACE_DIR = join(process.cwd(), 'traces');
+let exporters: TraceExporter[] | undefined;
 
 /**
- * Persist a trace as JSON (one file per turn) and log a one-line summary.
- * This is the always-on fallback surface; Phase 5 adds the Langfuse exporter
- * behind a TraceExporter seam and a CLI viewer over these files.
+ * Build the exporter list from config, once. Console summary is always on; JSON
+ * files are the always-on inspectable record (skipped under test); Langfuse is
+ * opt-in and only added when its keys are present.
  */
-export async function emitTrace(trace: Trace): Promise<void> {
-  logger.info(
-    {
-      turnId: trace.turnId,
-      decision: trace.decision,
-      latencyMs: trace.latencyMs,
-      tokens: trace.tokens.inputTokens + trace.tokens.outputTokens,
-      steps: trace.steps.length,
-    },
-    'turn complete',
-  );
+function getExporters(): TraceExporter[] {
+  if (exporters) return exporters;
 
-  if (env.NODE_ENV === 'test') return;
-
-  try {
-    await mkdir(TRACE_DIR, { recursive: true });
-    await writeFile(join(TRACE_DIR, `${trace.turnId}.json`), JSON.stringify(trace, null, 2));
-  } catch (err) {
-    // Tracing must never break a turn.
-    logger.warn({ err }, 'failed to persist trace');
+  const list: TraceExporter[] = [new ConsoleSummaryExporter()];
+  if (env.NODE_ENV !== 'test') list.push(new JsonFileExporter());
+  if (env.LANGFUSE_PUBLIC_KEY && env.LANGFUSE_SECRET_KEY) {
+    list.push(
+      new LangfuseExporter({
+        publicKey: env.LANGFUSE_PUBLIC_KEY,
+        secretKey: env.LANGFUSE_SECRET_KEY,
+        baseUrl: env.LANGFUSE_BASEURL,
+      }),
+    );
+    logger.info('Langfuse trace exporter enabled');
   }
+  exporters = list;
+  return list;
+}
+
+/** Fan a trace out to the given exporters, isolating each one's failures. */
+export async function fanOut(trace: Trace, list: TraceExporter[]): Promise<void> {
+  await Promise.all(
+    list.map((e) =>
+      e.export(trace).catch((err) => logger.warn({ err, exporter: e.name }, 'trace export failed')),
+    ),
+  );
+}
+
+/** Fan a finished trace out to every configured exporter; failures never break a turn. */
+export async function emitTrace(trace: Trace): Promise<void> {
+  await fanOut(trace, getExporters());
 }
