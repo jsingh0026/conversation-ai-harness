@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+coverage/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# logs & traces
+*.log
+logs/
+traces/
+
+# local data / vector index
+data/index/
+*.sqlite
+*.sqlite3
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.tsbuildinfo
