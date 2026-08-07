@@ -1,0 +1,139 @@
+import type {
+  Appointment,
+  CalendarSlot,
+  Contact,
+  CreateAppointmentInput,
+  CrmClient,
+  SendMessageInput,
+} from './types.js';
+
+let counter = 0;
+const nextId = (prefix: string): string => `${prefix}_${(++counter).toString(36)}`;
+
+/** A message the harness sent, captured so tests/evals can assert on replies. */
+export interface SentMessage extends SendMessageInput {
+  messageId: string;
+  sentAt: number;
+}
+
+/**
+ * In-memory CRM for local dev and evals. Deterministic, no network, and it
+ * records every side effect so tests can assert "the reply went out", "the tag
+ * was added", "the appointment was booked" without a live sandbox.
+ */
+export class MockCrmClient implements CrmClient {
+  readonly kind = 'mock' as const;
+
+  private contacts = new Map<string, Contact>();
+  private botState = new Map<string, boolean>();
+  private appointments: Appointment[] = [];
+  /** slots keyed by calendarId; a booked slot is removed to model slot-taken races. */
+  private slots = new Map<string, CalendarSlot[]>();
+
+  readonly sent: SentMessage[] = [];
+
+  constructor(seed?: { contacts?: Contact[]; slots?: Record<string, CalendarSlot[]> }) {
+    for (const c of seed?.contacts ?? []) this.contacts.set(c.id, c);
+    for (const [calId, slots] of Object.entries(seed?.slots ?? {})) this.slots.set(calId, slots);
+  }
+
+  /** Test helper: ensure a contact exists, creating an empty one if needed. */
+  upsertContact(contact: Partial<Contact> & { id: string }): Contact {
+    const existing = this.contacts.get(contact.id);
+    const merged: Contact = {
+      id: contact.id,
+      name: contact.name ?? existing?.name,
+      email: contact.email ?? existing?.email,
+      phone: contact.phone ?? existing?.phone,
+      tags: contact.tags ?? existing?.tags ?? [],
+      fields: { ...existing?.fields, ...contact.fields },
+      assignedUserId: contact.assignedUserId ?? existing?.assignedUserId,
+    };
+    this.contacts.set(merged.id, merged);
+    return merged;
+  }
+
+  async sendMessage(input: SendMessageInput): Promise<{ messageId: string }> {
+    const messageId = nextId('msg');
+    this.sent.push({ ...input, messageId, sentAt: Date.now() });
+    return { messageId };
+  }
+
+  async getContact(contactId: string): Promise<Contact> {
+    const c = this.contacts.get(contactId);
+    if (!c) throw new Error(`Contact not found: ${contactId}`);
+    return structuredClone(c);
+  }
+
+  async updateContactFields(
+    contactId: string,
+    fields: Record<string, string | number>,
+  ): Promise<Contact> {
+    const c = this.contacts.get(contactId) ?? this.upsertContact({ id: contactId });
+    c.fields = { ...c.fields, ...fields };
+    this.contacts.set(contactId, c);
+    return structuredClone(c);
+  }
+
+  async addTag(contactId: string, tag: string): Promise<void> {
+    const c = this.contacts.get(contactId) ?? this.upsertContact({ id: contactId });
+    if (!c.tags.includes(tag)) c.tags.push(tag);
+  }
+
+  async assignOwner(contactId: string, userId: string): Promise<void> {
+    const c = this.contacts.get(contactId) ?? this.upsertContact({ id: contactId });
+    c.assignedUserId = userId;
+  }
+
+  async getFreeSlots(calendarId: string, fromISO: string, toISO: string): Promise<CalendarSlot[]> {
+    const from = Date.parse(fromISO);
+    const to = Date.parse(toISO);
+    return (this.slots.get(calendarId) ?? []).filter(
+      (s) => Date.parse(s.startTime) >= from && Date.parse(s.startTime) <= to,
+    );
+  }
+
+  async createAppointment(input: CreateAppointmentInput): Promise<Appointment> {
+    const open = this.slots.get(input.calendarId) ?? [];
+    const idx = open.findIndex((s) => s.startTime === input.startTime);
+    if (idx === -1) {
+      // Slot no longer available — models the slot-taken race the harness must handle.
+      throw new SlotTakenError(input.startTime);
+    }
+    open.splice(idx, 1);
+    const appt: Appointment = {
+      id: nextId('appt'),
+      calendarId: input.calendarId,
+      contactId: input.contactId,
+      startTime: input.startTime,
+      endTime: input.endTime,
+      title: input.title,
+      status: 'booked',
+    };
+    this.appointments.push(appt);
+    return appt;
+  }
+
+  async isBotEnabled(conversationId: string): Promise<boolean> {
+    return this.botState.get(conversationId) ?? true;
+  }
+
+  async setBotEnabled(conversationId: string, enabled: boolean): Promise<void> {
+    this.botState.set(conversationId, enabled);
+  }
+
+  // --- test introspection ---
+  listAppointments(): Appointment[] {
+    return structuredClone(this.appointments);
+  }
+  lastSent(): SentMessage | undefined {
+    return this.sent.at(-1);
+  }
+}
+
+export class SlotTakenError extends Error {
+  constructor(public readonly startTime: string) {
+    super(`Slot no longer available: ${startTime}`);
+    this.name = 'SlotTakenError';
+  }
+}

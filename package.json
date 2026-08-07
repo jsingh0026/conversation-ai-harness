@@ -1,0 +1,42 @@
+{
+  "name": "conversation-ai-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent harness powering a HighLevel Conversation AI agent end-to-end",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "ingest": "tsx src/rag/ingest.ts",
+    "eval": "tsx evals/run.ts",
+    "trace": "tsx src/trace/cli.ts"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "fastify": "^5.11.2",
+    "pino": "^10.3.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "eslint": "^10.8.0",
+    "pino-pretty": "^13.1.3",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.11",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
