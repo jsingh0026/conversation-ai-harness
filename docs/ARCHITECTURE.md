@@ -62,11 +62,17 @@ two round-trips (decide → retrieve → answer). Documented alternative: a chea
 pre-gate for even lower latency — we keep the seam so it can be added, and we eval trigger quality
 either way.
 
-### 3.2 Provider abstraction
+### 3.2 Provider abstraction — thin seam over the Vercel AI SDK
+
+We keep a thin, own-able `LLMProvider` seam but implement it **over the Vercel AI SDK** rather than
+hand-rolling three raw SDK adapters. The AI SDK already normalizes tool-calling, streaming, and
+`usage` across Claude (`@ai-sdk/anthropic`), OpenAI (`@ai-sdk/openai`), and Gemini
+(`@ai-sdk/google`) — so we delegate wire-normalization to a library that does it well and spend our
+effort on the harness.
 
 ```ts
 interface LLMProvider {
-  readonly name: string;
+  readonly name: string;                                  // 'claude' | 'openai' | 'gemini'
   generate(req: GenerateRequest): Promise<GenerateResult>;
   stream(req: GenerateRequest): AsyncIterable<StreamChunk>;
 }
@@ -74,26 +80,28 @@ interface LLMProvider {
 interface GenerateRequest {
   system: string;
   messages: Message[];            // canonical role/content, incl. tool results
-  tools?: ToolSpec[];             // canonical JSON-schema tool defs
+  tools?: ToolSpec[];             // canonical tool defs (Zod/JSON-schema)
   toolChoice?: 'auto' | 'required' | 'none';
   model: string; temperature?: number; maxTokens?: number;
 }
 
 interface GenerateResult {
   text: string | null;
-  toolCalls: ToolCall[];          // {id, name, args} — normalized across providers
+  toolCalls: ToolCall[];          // {id, name, args} — normalized by the AI SDK
   usage: { inputTokens: number; outputTokens: number };
   finishReason: 'stop' | 'tool_use' | 'length' | 'error';
   raw: unknown;                   // provider-native response, for the trace
 }
 ```
 
-Each adapter (`claude.ts`, `openai.ts`, `gemini.ts`) translates canonical `ToolSpec` → its native
-format (Anthropic `tools`, OpenAI `functions`, Gemini `functionDeclarations`) and normalizes the
-response back to `ToolCall[]`. Errors map to typed classes (`RateLimitError`, `AuthError`,
-`ContextLengthError`, `TransientError`) so retry/backoff is uniform. Selection is config:
-`LLM_PROVIDER=claude|openai|gemini` + per-provider model in config — **switching is a config change,
-not a code change.** Embeddings are a *separate* `Embedder` interface (chat provider ≠ embed provider).
+Each provider is a tiny module that resolves an AI SDK **model handle** (`anthropic(modelId)` etc.)
+from config and maps our canonical `GenerateRequest`/`GenerateResult` to the SDK's
+`generateText`/`streamText` shape. Selection is config: `LLM_PROVIDER=claude|openai|gemini` +
+per-provider model — **switching is a config change, not a code change.** The seam is deliberately
+kept (not "just call the SDK") so a **4th provider or a non-AI-SDK backend** stays a one-file add, and
+so all calls flow through one place for tracing, typed errors (`RateLimitError`, `AuthError`,
+`ContextLengthError`, `TransientError`), and uniform retry/backoff. Embeddings are a *separate*
+`Embedder` interface (chat provider ≠ embed provider), also over the AI SDK's `embed`/`embedMany`.
 
 ### 3.3 Skills framework
 
@@ -101,14 +109,18 @@ not a code change.** Embeddings are a *separate* `Embedder` interface (chat prov
 interface Skill<I = unknown, O = unknown> {
   readonly name: string;
   readonly description: string;   // shown to the LLM for selection
-  readonly parameters: JSONSchema; // tool input schema (validated before execute)
+  readonly parameters: ZodSchema; // typed args — surfaced to the model AND validated before execute
   execute(input: I, ctx: SkillContext): Promise<SkillResult<O>>;
 }
 ```
 
-Skills self-register into a `SkillRegistry`; the registry is what the orchestrator exposes to the LLM
-as tools. **Adding a skill = implement the interface + register it. No core edits.** `SkillContext`
-gives a skill the `CrmClient`, contact/conversation, and the trace collector.
+Each skill is one file exporting a descriptor; a **registry auto-collects** them (array/glob), so
+**adding a skill = drop a file + one array entry — no core edits.** The `parameters` Zod schema is
+surfaced to the model as the tool's input schema (via the AI SDK's `tool({ parameters })`), so arg
+validation and forced JSON are provider-native — not hand-parsed after the fact. `SkillContext` gives
+a skill the `CrmClient`, contact/conversation, and the trace collector. An **allowlist** controls
+which skills a given agent mode may call, and skills can be **gated dynamically at request time**
+(e.g. expose a risky skill only when a condition holds).
 
 ### 3.4 CRM client (mockable)
 
@@ -121,12 +133,17 @@ We build and eval against the mock, then swap to real via config — no orchestr
 
 - **KB:** 10–20 markdown docs for a fictional business (proposed: **a real-estate brokerage** — fits
   the `budget` / `preferred time` contact fields, appointment booking, and a rich FAQ KB).
-- **Ingest (`npm run ingest`):** load docs → chunk (heading-aware, ~500 tokens, overlap) → embed →
-  persist a local index (SQLite via `sqlite-vec`, or a flat JSON loaded into memory — both fully
-  local, zero infra). Loaded into memory at boot for sub-ms cosine search.
-- **Retrieve:** embed query → top-k cosine → **score threshold**. If best score < threshold →
-  "no grounded answer" signal → model declines or hands over. System prompt enforces *answer only
-  from retrieved context*.
+- **Ingest (`npm run ingest`, standalone CLI):** load docs → chunk (**heading-aware**: split on
+  headings first, then a ~500-token sliding window with overlap for over-long sections) → embed →
+  persist. Each chunk carries a SHA-256 `content_hash` so re-ingest **skips unchanged sources**.
+  Default store is a **flat in-memory index**: embeddings written to a JSON artifact at ingest,
+  loaded into memory at boot for sub-ms cosine search — zero infra for 10–20 docs. **pgvector**
+  (HNSW + `vector_cosine_ops`) is a documented swap behind the same `VectorStore` interface for scale-up.
+- **Retrieve:** embed query → top-k cosine → **score threshold**. If the best score < threshold, the
+  retriever returns an **explicit "KB has no answer" result** (not weak snippets) — a hard signal the
+  agent uses to decline or hand over, rather than trusting the prompt alone. Retrieved chunks (with
+  scores + ids) flow into the trace and can back a citation. System prompt reinforces *answer only
+  from retrieved context; if it's not there, say so*.
 
 ### 3.6 Idempotency & rapid messages
 
@@ -173,7 +190,7 @@ src/
   config/         env schema (zod) + provider/model config + feature flags
   server/         fastify app, webhook route, health, /traces/:id
   orchestrator/   turn loop, decision, idempotency store, per-convo queue
-  providers/      LLMProvider + claude/openai/gemini adapters + registry + tool translation
+  providers/      LLMProvider seam over the Vercel AI SDK (claude/openai/gemini) + registry
   llm/            canonical types (Message, ToolSpec, ToolCall, usage), typed errors, retry
   rag/            Embedder, chunker, vector store, retriever, ingest script
   skills/         Skill interface + registry + updateContact / handover / appointment
@@ -209,7 +226,9 @@ testable/reproducible offline (except live LLM calls). Phase 7 swaps in the real
 ## 6. Open trade-offs to revisit
 
 - Tool-based RAG trigger (one extra round-trip on retrieve) vs. a cheap classifier pre-gate.
-- SQLite (`sqlite-vec`) vs. flat in-memory JSON for the vector index.
+- Flat in-memory index (default, chosen for 10–20 docs) vs. pgvector for scale-up.
+- `LLMProvider` seam over the Vercel AI SDK (chosen — delegates wire-normalization) vs. hand-rolled
+  per-SDK adapters (more control, more code).
 - Serialize-per-conversation vs. debounce/coalesce for rapid messages.
 - LLM-judge groundedness vs. deterministic fact checks in evals.
 - Langfuse as primary trace UI (opt-in via env; self-host or cloud) vs. the always-on JSON/CLI
