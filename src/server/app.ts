@@ -4,6 +4,7 @@ import { logger } from '../util/logger.js';
 import { createCrmClient } from '../crm/index.js';
 import type { CrmClient } from '../crm/types.js';
 import { createOrchestratorStack, type OrchestratorStack } from '../orchestrator/index.js';
+import { createKnowledgeTool } from '../rag/index.js';
 import { normalizeWebhook, type HighLevelInboundWebhook } from './webhook.js';
 
 export interface AppDeps {
@@ -13,7 +14,10 @@ export interface AppDeps {
 
 function defaultDeps(): AppDeps {
   const crm = createCrmClient();
-  return { crm, stack: createOrchestratorStack(crm) };
+  // RAG retrieval is registered as a tool the agent may call; skills join in Phase 4.
+  const tools = [createKnowledgeTool()];
+  const stack = createOrchestratorStack(crm, tools, { businessName: 'Lumina Realty' });
+  return { crm, stack };
 }
 
 /**
@@ -51,7 +55,18 @@ export function buildApp(deps: AppDeps = defaultDeps()) {
     const { message } = result;
     void queue
       .enqueue(message.conversationId, () => orchestrator.runTurn(message))
-      .catch((err) => request.log.error({ err, messageId: message.messageId }, 'turn processing failed'));
+      .then((trace) => {
+        // On failure, forget the idempotency key so a HighLevel redelivery can
+        // reprocess (a dropped turn = an ignored customer otherwise).
+        if (trace.error) {
+          idempotency.delete(result.idempotencyKey);
+          request.log.warn({ messageId: message.messageId }, 'turn errored; key released for retry');
+        }
+      })
+      .catch((err) => {
+        idempotency.delete(result.idempotencyKey);
+        request.log.error({ err, messageId: message.messageId }, 'turn processing failed');
+      });
 
     request.log.info(
       { conversationId: message.conversationId, messageId: message.messageId },

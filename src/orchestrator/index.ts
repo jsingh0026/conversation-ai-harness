@@ -1,5 +1,6 @@
 import { createProvider } from '../providers/registry.js';
 import type { CrmClient } from '../crm/types.js';
+import type { SystemPromptVars } from '../prompts/system.js';
 import type { AgentTool } from './agent-tool.js';
 import { ConversationStore } from './history.js';
 import { IdempotencyStore } from './idempotency.js';
@@ -23,12 +24,13 @@ export interface OrchestratorStack {
   history: ConversationStore;
 }
 
-/** Build the default stack for a given CRM. Tools are registered in later phases. */
+/** Build the default stack for a given CRM, with the given tools + prompt vars. */
 export function createOrchestratorStack(
   crm: CrmClient,
   tools: AgentTool[] = [],
+  promptVars: SystemPromptVars = {},
 ): OrchestratorStack {
   const history = new ConversationStore();
-  const orchestrator = new Orchestrator({ provider: createProvider(), crm, tools, history });
+  const orchestrator = new Orchestrator({ provider: createProvider(), crm, tools, history, promptVars });
   return { orchestrator, queue: new KeyedQueue(), idempotency: new IdempotencyStore(), history };
 }
