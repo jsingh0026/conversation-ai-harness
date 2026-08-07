@@ -89,7 +89,7 @@ To connect the real sandbox, set `CRM_MODE=highlevel` and follow [`docs/SETUP.md
 | `pnpm eval [provider...] [suite...]` | Run the eval suite (see below) |
 | `pnpm trace [<id>\|latest]` | Terminal trace viewer |
 | `pnpm providers:smoke [provider]` | Sanity-check a provider returns a tool call |
-| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 119 tests · types · lint |
+| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 121 tests · types · lint |
 
 ## Multi-provider
 
@@ -174,7 +174,7 @@ docs/            ARCHITECTURE, SETUP, DEMO, EVAL_RESULTS, ASSIGNMENT
 - **Engineering** — a bounded tool-use loop as the single decision mechanism; the Vercel AI SDK for
   normalized multi-provider calls; a flat in-memory vector index (zero infra for a small KB) behind
   a swappable interface; mock-first so everything runs offline.
-- **QA** — 119 unit tests + an independent adversarial review sweep after every phase (findings
+- **QA** — 121 unit tests + an independent adversarial review sweep after every phase (findings
   applied before moving on), plus the eval suite as behavioral regression coverage.
 
 ## Functional vs. mocked
