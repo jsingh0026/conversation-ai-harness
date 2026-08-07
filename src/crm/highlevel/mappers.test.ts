@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapContact, parseFreeSlots, toHlMessageType } from './mappers.js';
+import { mapContact, parseFreeSlots, shiftIso, toHlMessageType } from './mappers.js';
 
 describe('mapContact', () => {
   it('composes a name and maps custom fields by id', () => {
@@ -47,6 +47,23 @@ describe('parseFreeSlots', () => {
 
   it('drops unparseable slot strings', () => {
     expect(parseFreeSlots({ '2026-08-09': { slots: ['not-a-date'] } })).toHaveLength(0);
+  });
+
+  it('preserves the offset (does not flatten local time to UTC)', () => {
+    const slots = parseFreeSlots({ '2026-08-09': { slots: ['2026-08-09T09:00:00-04:00'] } }, 30);
+    expect(slots[0]).toEqual({
+      startTime: '2026-08-09T09:00:00-04:00',
+      endTime: '2026-08-09T09:30:00-04:00',
+    });
+  });
+});
+
+describe('shiftIso', () => {
+  it('adds minutes while keeping the UTC offset', () => {
+    expect(shiftIso('2026-08-09T09:00:00-04:00', 30)).toBe('2026-08-09T09:30:00-04:00');
+    expect(shiftIso('2026-08-09T15:00:00.000Z', 30)).toBe('2026-08-09T15:30:00.000Z');
+    // crosses the hour with a positive offset
+    expect(shiftIso('2026-08-09T09:45:00+05:30', 30)).toBe('2026-08-09T10:15:00+05:30');
   });
 });
 

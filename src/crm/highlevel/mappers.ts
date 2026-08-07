@@ -62,13 +62,28 @@ export function parseFreeSlots(resp: HlFreeSlotsResponse, durationMin = 30): Cal
   for (const [key, value] of Object.entries(resp)) {
     if (key === 'traceId' || typeof value !== 'object' || value === null) continue;
     for (const start of value.slots ?? []) {
-      const startMs = Date.parse(start);
-      if (Number.isNaN(startMs)) continue;
-      out.push({
-        startTime: new Date(startMs).toISOString(),
-        endTime: new Date(startMs + durationMin * 60_000).toISOString(),
-      });
+      if (Number.isNaN(Date.parse(start))) continue;
+      // Keep the slot's original wall-clock + offset so the agent can quote the
+      // office-local time. HighLevel only returns starts; derive the end.
+      out.push({ startTime: start, endTime: shiftIso(start, durationMin) });
     }
   }
   return out.sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime));
+}
+
+/** Add minutes to an ISO time while preserving its original UTC offset suffix. */
+export function shiftIso(iso: string, minutes: number): string {
+  const m = /([zZ]|[+-]\d{2}:\d{2})$/.exec(iso);
+  const offset = m ? m[1]! : 'Z';
+  const ms = Date.parse(iso) + minutes * 60_000;
+  if (offset.toUpperCase() === 'Z') return new Date(ms).toISOString();
+
+  const sign = offset[0] === '-' ? -1 : 1;
+  const offMin = sign * (Number(offset.slice(1, 3)) * 60 + Number(offset.slice(4, 6)));
+  const local = new Date(ms + offMin * 60_000);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return (
+    `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}` +
+    `T${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:${pad(local.getUTCSeconds())}${offset}`
+  );
 }

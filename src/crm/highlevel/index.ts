@@ -55,6 +55,8 @@ export function getHighLevelContext(): HlContext {
   const client = new HighLevelClient(new HlHttp(tokenManager), {
     locationId: cfg.locationId,
     fieldMap: { budget: env.HL_FIELD_BUDGET_ID, preferredTime: env.HL_FIELD_PREFERRED_TIME_ID },
+    // Appointments need an assignee; fall back to the handover user if set.
+    assignedUserId: env.HL_CALENDAR_USER_ID ?? env.HL_HANDOVER_USER_ID,
   });
   ctx = { tokenManager, client };
   return ctx;

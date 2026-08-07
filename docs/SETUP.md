@@ -35,7 +35,9 @@ number** (SMS) **or** configure **email sending**. Pick when we wire the send pa
    **preferred time** (name/email/phone are standard). Copy their field IDs →
    `HL_FIELD_BUDGET_ID`, `HL_FIELD_PREFERRED_TIME_ID`. (The harness can also resolve these by name
    via the custom-fields API.)
-2. **Calendar** — create one with availability + an assigned user. Copy → `HL_CALENDAR_ID`.
+2. **Calendar** — create one with availability + an assigned team member. Copy the calendar id →
+   `HL_CALENDAR_ID`, and that team member's **user id** → `HL_CALENDAR_USER_ID` (HighLevel requires
+   an assignee to create an appointment).
 3. **Handover markers** — a tag (e.g. `bot-handover`) → `HL_HANDOVER_TAG`, and/or a user to reassign
    the conversation to → `HL_HANDOVER_USER_ID`.
 4. Create a couple of **test contacts** to converse with.

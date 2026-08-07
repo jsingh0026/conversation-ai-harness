@@ -34,6 +34,8 @@ const EnvSchema = z.object({
   HL_LOCATION_ID: z.string().optional(),
   HL_WEBHOOK_SECRET: z.string().optional(),
   HL_CALENDAR_ID: z.string().optional(),
+  /** User the booked appointment is assigned to (HighLevel requires this). */
+  HL_CALENDAR_USER_ID: z.string().optional(),
   HL_FIELD_BUDGET_ID: z.string().optional(),
   HL_FIELD_PREFERRED_TIME_ID: z.string().optional(),
   HL_HANDOVER_TAG: z.string().default('bot-handover'),

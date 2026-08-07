@@ -120,8 +120,9 @@ export class TokenManager {
 
   private async persist(token: StoredToken): Promise<void> {
     try {
-      await mkdir(dirname(this.tokenPath), { recursive: true });
-      await writeFile(this.tokenPath, JSON.stringify(token, null, 2));
+      // Restrictive perms — the refresh token is a long-lived secret.
+      await mkdir(dirname(this.tokenPath), { recursive: true, mode: 0o700 });
+      await writeFile(this.tokenPath, JSON.stringify(token, null, 2), { mode: 0o600 });
     } catch (err) {
       logger.warn({ err }, 'failed to persist HighLevel token');
     }

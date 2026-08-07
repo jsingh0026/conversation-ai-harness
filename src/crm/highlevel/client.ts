@@ -17,12 +17,12 @@ import {
   type HlFreeSlotsResponse,
 } from './mappers.js';
 
-const CALENDAR_VERSION = '2021-04-15';
-
 export interface HighLevelClientConfig {
   locationId: string;
   /** Custom-field IDs for the fields the update-contact skill writes. */
   fieldMap: { budget?: string; preferredTime?: string };
+  /** User the booked appointment is assigned to (HighLevel requires this). */
+  assignedUserId?: string;
   slotDurationMin?: number;
 }
 
@@ -91,9 +91,9 @@ export class HighLevelClient implements CrmClient {
   }
 
   async getFreeSlots(calendarId: string, fromISO: string, toISO: string): Promise<CalendarSlot[]> {
+    // Uses the default Version (2021-07-28) — the same as every other resource.
     const resp = await this.http.get<HlFreeSlotsResponse>(`/calendars/${calendarId}/free-slots`, {
       query: { startDate: Date.parse(fromISO), endDate: Date.parse(toISO) },
-      version: CALENDAR_VERSION,
     });
     return parseFreeSlots(resp, this.config.slotDurationMin);
   }
@@ -103,14 +103,15 @@ export class HighLevelClient implements CrmClient {
       const res = await this.http.post<{ id?: string; appointmentId?: string }>(
         '/calendars/events/appointments',
         {
-          version: CALENDAR_VERSION,
           body: {
             calendarId: input.calendarId,
             locationId: this.config.locationId,
             contactId: input.contactId,
             startTime: input.startTime,
             endTime: input.endTime,
-            title: input.title,
+            title: input.title ?? 'Property viewing',
+            // HighLevel requires an assignee for most calendars.
+            assignedUserId: this.config.assignedUserId,
           },
         },
       );
@@ -140,8 +141,15 @@ export class HighLevelClient implements CrmClient {
   }
 }
 
-/** A taken slot surfaces as a 4xx whose body mentions the conflict. */
+/**
+ * A taken slot surfaces as a conflict. We map narrowly: a 409, or a 4xx whose
+ * body clearly names slot unavailability. Anything else (e.g. a validation
+ * error) rethrows unchanged so it isn't silently mislabeled as a race.
+ */
 function isSlotConflict(err: HlApiError): boolean {
-  if (![400, 409, 422].includes(err.status)) return false;
-  return /slot|not available|unavailable|conflict|already booked/i.test(err.body);
+  if (err.status === 409) return true;
+  if (![400, 422].includes(err.status)) return false;
+  return /slot (is )?(not available|taken|unavailable)|already booked|time.*not available/i.test(
+    err.body,
+  );
 }
