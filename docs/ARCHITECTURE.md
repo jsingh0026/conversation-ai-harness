@@ -1,7 +1,7 @@
 # Architecture & Build Plan
 
 > Design doc for the Conversation AI Agent Harness. Read alongside [`ASSIGNMENT.md`](./ASSIGNMENT.md).
-> **Status: proposed — pending review before implementation.**
+> **Status: implemented** (phases 0–7). See [`../README.md`](../README.md) for how to run it.
 
 ## 1. Design goals (from the eval criteria)
 
