@@ -20,6 +20,8 @@ export interface TurnObservation {
   reply: string | null;
   decision: string;
   latencyMs: number;
+  budgetExhausted: boolean;
+  /** Set when the turn errored OR a tool threw (infra failure) — not a model choice. */
   error?: string;
 }
 
@@ -83,7 +85,9 @@ export async function runEvalTurn(
     reply: trace.reply,
     decision: trace.decision,
     latencyMs,
-    error: trace.error,
+    budgetExhausted: Boolean(trace.budgetExhausted),
+    // A swallowed tool exception (e.g. missing embedding key) is infra, not behavior.
+    error: trace.error ?? (trace.toolError ? 'tool error (infra)' : undefined),
   };
 }
 

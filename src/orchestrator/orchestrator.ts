@@ -204,6 +204,9 @@ export class Orchestrator {
       }
       return { toolCallId: call.id, name: call.name, result: output };
     } catch (err) {
+      // A thrown tool is an infra failure (vs a tool returning {error}); flag it
+      // so evals don't mistake broken infra for the model choosing not to act.
+      ctx.trace.recordToolError();
       const output = { error: err instanceof Error ? err.message : String(err) };
       ctx.trace.addToolStep({
         name: call.name,

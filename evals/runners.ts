@@ -64,6 +64,14 @@ async function observeAll<C extends { message: string }>(
 
 const countErrors = <C>(rows: Observed<C>[]): number => rows.filter((r) => r.obs.error).length;
 
+/** An errored turn is infra, not behavior: it's a failure and is excluded from metrics. */
+function erroredFailure<C extends { id: string; message: string }>(
+  c: C,
+  error: string,
+): CaseResult {
+  return { id: c.id, pass: false, detail: `infra error: ${error} — "${c.message}"` };
+}
+
 export async function runRagTrigger(
   provider: LLMProvider,
   retriever: Retriever,
@@ -71,18 +79,24 @@ export async function runRagTrigger(
 ): Promise<SuiteResult> {
   const rows = await observeAll(provider, retriever, cases);
   const failures: CaseResult[] = [];
-  const conf = confusionOf(
-    rows.map(({ c, obs }) => {
-      const pass = obs.retrieved === c.shouldRetrieve;
-      if (!pass)
-        failures.push({
-          id: c.id,
-          pass,
-          detail: `expected retrieve=${c.shouldRetrieve}, got ${obs.retrieved} — "${c.message}"`,
-        });
-      return { pred: obs.retrieved, actual: c.shouldRetrieve };
-    }),
-  );
+  const scored: { pred: boolean; actual: boolean }[] = [];
+
+  for (const { c, obs } of rows) {
+    if (obs.error) {
+      failures.push(erroredFailure(c, obs.error));
+      continue;
+    }
+    const pass = obs.retrieved === c.shouldRetrieve;
+    if (!pass)
+      failures.push({
+        id: c.id,
+        pass,
+        detail: `expected retrieve=${c.shouldRetrieve}, got ${obs.retrieved} — "${c.message}"`,
+      });
+    scored.push({ pred: obs.retrieved, actual: c.shouldRetrieve });
+  }
+
+  const conf = confusionOf(scored);
   const p = precision(conf);
   const r = recall(conf);
   return {
@@ -109,6 +123,10 @@ export async function runGroundedness(
   let declinedPassed = 0;
 
   for (const { c, obs } of rows) {
+    if (obs.error) {
+      failures.push(erroredFailure(c, obs.error));
+      continue;
+    }
     let pass: boolean;
     let detail: string;
     if (c.expect === 'grounded') {
@@ -118,7 +136,7 @@ export async function runGroundedness(
       detail = `grounded expected facts ${JSON.stringify(c.expectedFacts)} — reply: "${obs.reply ?? ''}"`;
     } else {
       declined++;
-      pass = declinePass(obs.reply, obs.decision);
+      pass = declinePass(obs.reply, obs.decision, obs.budgetExhausted);
       if (pass) declinedPassed++;
       detail = `should decline — reply: "${obs.reply ?? ''}"`;
     }
@@ -148,36 +166,43 @@ export async function runSkill(
 ): Promise<SuiteResult> {
   const rows = await observeAll(provider, retriever, cases);
   const failures: CaseResult[] = [];
+  const scored: { pred: boolean; actual: boolean }[] = [];
 
-  const conf = confusionOf(
-    rows.map(({ c, obs }) => {
-      const shouldFire = c.expectSkill === targetSkill;
-      const didFire = obs.firedTools.includes(targetSkill);
-      let pass = shouldFire === didFire;
+  for (const { c, obs } of rows) {
+    if (obs.error) {
+      failures.push(erroredFailure(c, obs.error));
+      continue;
+    }
+    const shouldFire = c.expectSkill === targetSkill;
+    const didFire = obs.firedTools.includes(targetSkill);
 
-      // For positive extraction cases, also require the expected fields.
-      if (pass && shouldFire && c.expectedFields?.length) {
-        const input = (obs.toolInputs[targetSkill] ?? {}) as Record<string, unknown>;
-        const missing = c.expectedFields.filter((f) => input[f] === undefined);
-        if (missing.length) {
-          pass = false;
-          failures.push({
-            id: c.id,
-            pass,
-            detail: `fired but missing fields ${JSON.stringify(missing)} — got ${JSON.stringify(input)}`,
-          });
-          return { pred: didFire, actual: shouldFire };
-        }
-      }
-      if (!pass)
+    // For positive extraction cases, missing expected fields is a miss (not a
+    // clean fire), so it counts against recall — not as a true positive.
+    if (shouldFire && didFire && c.expectedFields?.length) {
+      const input = (obs.toolInputs[targetSkill] ?? {}) as Record<string, unknown>;
+      const missing = c.expectedFields.filter((f) => input[f] === undefined);
+      if (missing.length) {
         failures.push({
           id: c.id,
-          pass,
-          detail: `expected ${targetSkill}=${shouldFire}, got ${didFire} — "${c.message}"`,
+          pass: false,
+          detail: `fired but missing fields ${JSON.stringify(missing)} — got ${JSON.stringify(input)}`,
         });
-      return { pred: didFire, actual: shouldFire };
-    }),
-  );
+        scored.push({ pred: false, actual: true });
+        continue;
+      }
+    }
+
+    const pass = shouldFire === didFire;
+    if (!pass)
+      failures.push({
+        id: c.id,
+        pass,
+        detail: `expected ${targetSkill}=${shouldFire}, got ${didFire} — "${c.message}"`,
+      });
+    scored.push({ pred: didFire, actual: shouldFire });
+  }
+
+  const conf = confusionOf(scored);
   const p = precision(conf);
   const r = recall(conf);
   return {
@@ -213,23 +238,40 @@ export async function runLatency(
     retriever,
     messages.map((m, i) => ({ id: `lat-${i}`, message: m })),
   );
+  const errors = countErrors(rows);
   const latencies = rows.filter((r) => !r.obs.error).map((r) => r.obs.latencyMs);
+  const failures: CaseResult[] = [];
+
+  // A run with no successful turns can't be "green" — surface it loudly.
+  if (latencies.length === 0) {
+    failures.push({ id: 'no-data', pass: false, detail: 'all latency turns errored' });
+    return {
+      suite: 'latency',
+      provider: provider.name,
+      total: messages.length,
+      passed: 0,
+      metrics: { p50: 0, p95: 0, mean: 0 },
+      failures,
+      errors,
+    };
+  }
+
   const p50 = percentile(latencies, 50);
   const p95 = percentile(latencies, 95);
-  const mean = latencies.length ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0;
+  const mean = latencies.reduce((a, b) => a + b, 0) / latencies.length;
 
   // Targets from the spec: p50 ≤ 3s, p95 ≤ 6s (non-RAG turns).
-  const failures: CaseResult[] = [];
   if (p50 > 3000) failures.push({ id: 'p50', pass: false, detail: `p50 ${p50}ms > 3000ms target` });
   if (p95 > 6000) failures.push({ id: 'p95', pass: false, detail: `p95 ${p95}ms > 6000ms target` });
+  if (errors > 0) failures.push({ id: 'errors', pass: false, detail: `${errors} turn(s) errored` });
 
   return {
     suite: 'latency',
     provider: provider.name,
     total: messages.length,
-    passed: latencies.length,
+    passed: latencies.filter((ms) => ms <= 6000).length,
     metrics: { p50, p95, mean: Math.round(mean) },
     failures,
-    errors: countErrors(rows),
+    errors,
   };
 }

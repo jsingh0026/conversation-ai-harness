@@ -34,18 +34,24 @@ describe('scoring', () => {
     expect(percentile([], 50)).toBe(0);
   });
 
-  it('groundedPass requires every fact, honoring a|b alternatives', () => {
+  it('groundedPass matches facts with boundaries (no substring false positives)', () => {
     expect(groundedPass('Our commission is 5% total', ['5%'])).toBe(true);
-    expect(groundedPass('Open 9am to 6pm', ['9', '6'])).toBe(true);
     expect(groundedPass('A credit up to $2,500', ['2,500|2500'])).toBe(true);
-    expect(groundedPass('A credit up to $2500', ['2,500|2500'])).toBe(true);
-    expect(groundedPass('Open 9am', ['9', '6'])).toBe(false);
+    expect(groundedPass('Open 9am to 6pm', ['9am|9 am', '6pm|6 pm'])).toBe(true);
+    // Boundary/number-aware: a WRONG rate or stray digits must NOT pass.
+    expect(groundedPass('Our commission is 15%', ['5%'])).toBe(false);
+    expect(groundedPass('Split is 12.5% each', ['2.5%'])).toBe(false);
+    expect(groundedPass('Call 555-609 for hours', ['9am|9 am', '6pm|6 pm'])).toBe(false);
     expect(groundedPass(null, ['5%'])).toBe(false);
   });
 
-  it('declinePass accepts declines/handover, rejects a confident fabrication', () => {
+  it('declinePass: handover/no-answer pass; fabricated $ or % and fallback fail', () => {
     expect(declinePass("I don't have that information", 'knowledge')).toBe(true);
+    expect(declinePass('We only serve Marisol Bay County, not Denver.', 'knowledge')).toBe(true);
     expect(declinePass('anything', 'handover')).toBe(true);
     expect(declinePass('The average price is $850,000.', 'knowledge')).toBe(false);
+    expect(declinePass('Rates may rise to 7%, but confirm with a lender.', 'knowledge')).toBe(false);
+    // A generic fallback is not a deliberate decline.
+    expect(declinePass('let me get a team member to help.', 'chitchat', true)).toBe(false);
   });
 });

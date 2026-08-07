@@ -25,6 +25,7 @@ export class TraceCollector {
   private decision: TraceDecision | undefined;
   private error: string | undefined;
   private budgetExhausted = false;
+  private toolError = false;
 
   constructor(private readonly init: TraceInit) {}
 
@@ -65,6 +66,11 @@ export class TraceCollector {
     this.budgetExhausted = true;
   }
 
+  /** Flag that a tool threw (an infra failure the loop recovered from). */
+  recordToolError(): void {
+    this.toolError = true;
+  }
+
   setError(message: string): void {
     this.error = message;
     this.decision = 'error';
@@ -96,6 +102,7 @@ export class TraceCollector {
       tokens,
       reply: this.reply,
       budgetExhausted: this.budgetExhausted || undefined,
+      toolError: this.toolError || undefined,
       error: this.error,
     };
   }

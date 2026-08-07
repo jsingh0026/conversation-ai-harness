@@ -31,25 +31,50 @@ export function percentile(values: number[], p: number): number {
   return sorted[idx]!;
 }
 
-/** Phrases that indicate the agent declined rather than fabricating an answer. */
-export const DECLINE_RE =
-  /(don'?t|do not) have|not (sure|able)|can'?t (help|assist|find)|cannot|reach out|team member|out of scope|isn'?t something|don'?t currently|unable|no information|not able to/i;
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** A grounded answer passes if every expected fact (each may be `a|b` alternatives) appears. */
+/**
+ * Match one fact against a reply with boundaries, so `5%` doesn't match `15%`,
+ * `9` doesn't match `1996`, and `free` doesn't match `freedom`. Percentages are
+ * matched numerically (not as a substring of a bigger number).
+ */
+export function factMatches(lowerReply: string, alt: string): boolean {
+  const a = alt.trim().toLowerCase();
+  if (!a) return false;
+  if (a.endsWith('%')) {
+    const num = a.slice(0, -1);
+    return new RegExp(`(?<![\\d.])${escapeRe(num)}%`).test(lowerReply);
+  }
+  // Word-ish boundary for simple alphanumeric tokens (allow spaces, ., ', -).
+  if (/^[a-z0-9][a-z0-9 .'-]*$/.test(a)) {
+    return new RegExp(`(?<![a-z0-9])${escapeRe(a)}(?![a-z0-9])`).test(lowerReply);
+  }
+  return lowerReply.includes(a);
+}
+
+/** Grounded passes if every expected fact (each may be `a|b` alternatives) matches with boundaries. */
 export function groundedPass(reply: string | null, expectedFacts: string[] = []): boolean {
   if (!reply) return false;
   const low = reply.toLowerCase();
-  return expectedFacts.every((fact) =>
-    fact
-      .toLowerCase()
-      .split('|')
-      .some((alt) => low.includes(alt.trim())),
-  );
+  return expectedFacts.every((fact) => fact.split('|').some((alt) => factMatches(low, alt)));
 }
 
-/** A decline passes if the agent handed over or produced no confident fabricated answer. */
-export function declinePass(reply: string | null, decision: string): boolean {
+/** A specific price/rate figure the agent shouldn't have invented for an out-of-KB question. */
+export const FABRICATION_RE = /\$\s?\d|\d+(\.\d+)?\s?%/;
+
+/**
+ * A decline passes if the agent handed over, said nothing, or answered WITHOUT
+ * asserting a specific fabricated figure ($ amount / percentage). A generic
+ * fallback/budget-exhausted reply is NOT a valid decline — that's a failure, not
+ * a deliberate "I don't have that". (Heuristic; documented as such in the README.)
+ */
+export function declinePass(
+  reply: string | null,
+  decision: string,
+  budgetExhausted = false,
+): boolean {
   if (decision === 'handover' || decision === 'bot_disabled') return true;
+  if (budgetExhausted) return false;
   if (!reply) return true;
-  return DECLINE_RE.test(reply);
+  return !FABRICATION_RE.test(reply);
 }

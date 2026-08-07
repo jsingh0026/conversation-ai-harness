@@ -10,12 +10,14 @@
  * candid failure list. Providers without an API key are skipped.
  */
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { env } from '../src/config/env.js';
 import type { ProviderName } from '../src/llm/types.js';
 import { ALL_PROVIDERS, createProvider, hasApiKey } from '../src/providers/registry.js';
 import { createEmbedder } from '../src/rag/embedder.js';
 import { INDEX_PATH, Retriever } from '../src/rag/retriever.js';
+import type { KbIndex } from '../src/rag/types.js';
 import { shutdownTracing } from '../src/trace/emit.js';
 import { renderReport } from './report.js';
 import {
@@ -44,22 +46,59 @@ const ALL_SUITES = [
 type Suite = (typeof ALL_SUITES)[number];
 
 function parseArgs(argv: string[]): { providers: ProviderName[]; suites: Suite[] } {
-  const providers = argv.filter((a): a is ProviderName =>
-    (ALL_PROVIDERS as readonly string[]).includes(a),
-  );
-  const suites = argv.filter((a): a is Suite => (ALL_SUITES as readonly string[]).includes(a));
+  const isProvider = (a: string): a is ProviderName =>
+    (ALL_PROVIDERS as readonly string[]).includes(a);
+  const isSuite = (a: string): a is Suite => (ALL_SUITES as readonly string[]).includes(a);
+
+  const unknown = argv.filter((a) => !isProvider(a) && !isSuite(a));
+  if (unknown.length) {
+    console.error(
+      `Unknown argument(s): ${unknown.join(', ')}\n` +
+        `Providers: ${ALL_PROVIDERS.join(', ')}\nSuites: ${ALL_SUITES.join(', ')}`,
+    );
+    process.exit(1);
+  }
+
+  const providers = argv.filter(isProvider);
+  const suites = argv.filter(isSuite);
   return {
     providers: providers.length ? providers : [...ALL_PROVIDERS],
     suites: suites.length ? suites : [...ALL_SUITES],
   };
 }
 
+/** Env var holding the embedding provider's API key. */
+function embedKeyPresent(): boolean {
+  return env.EMBED_PROVIDER === 'openai'
+    ? Boolean(env.OPENAI_API_KEY)
+    : Boolean(env.GOOGLE_GENERATIVE_AI_API_KEY);
+}
+
 async function main(): Promise<void> {
   const { providers, suites } = parseArgs(process.argv.slice(2));
 
-  if (!existsSync(INDEX_PATH)) {
-    console.error(`No KB index at ${INDEX_PATH}. Run \`pnpm ingest\` first.`);
-    process.exit(1);
+  const needsRag = suites.includes('rag-trigger') || suites.includes('groundedness');
+  if (needsRag) {
+    if (!existsSync(INDEX_PATH)) {
+      console.error(`No KB index at ${INDEX_PATH}. Run \`pnpm ingest\` first.`);
+      process.exit(1);
+    }
+    if (!embedKeyPresent()) {
+      console.error(
+        `RAG suites need an embedding key for ${env.EMBED_PROVIDER} (query embeddings). ` +
+          `Set it in .env, or run only non-RAG suites (e.g. \`pnpm eval handover latency\`).`,
+      );
+      process.exit(1);
+    }
+    // The index must have been built with the same embed model we'll query with.
+    const idx = JSON.parse(readFileSync(INDEX_PATH, 'utf8')) as KbIndex;
+    if (idx.embedModel !== env.EMBED_MODEL) {
+      console.error(
+        `KB index was built with ${idx.embedModel} but EMBED_MODEL is ${env.EMBED_MODEL}. ` +
+          `Re-run \`pnpm ingest\`.`,
+      );
+      process.exit(1);
+    }
   }
 
   const active = providers.filter((p) => {
@@ -108,7 +147,8 @@ async function main(): Promise<void> {
   console.log(renderReport(results));
   await shutdownTracing();
 
-  const failed = results.reduce((n, r) => n + r.failures.length, 0);
+  // Any failure OR any infra error fails the run (a broken provider isn't "green").
+  const failed = results.reduce((n, r) => n + r.failures.length + r.errors, 0);
   process.exitCode = failed > 0 ? 1 : 0;
 }
 

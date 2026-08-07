@@ -62,5 +62,8 @@ export interface Trace {
   reply: string | null;
   /** True when the turn hit the step budget and closed out with a fallback. */
   budgetExhausted?: boolean;
+  /** A tool threw (infra failure) even if the turn recovered — distinct from a
+   * model choosing not to act. Evals use this to avoid scoring infra as behavior. */
+  toolError?: boolean;
   error?: string;
 }
