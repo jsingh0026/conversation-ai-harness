@@ -67,8 +67,9 @@ function parseArgs(argv: string[]): { providers: ProviderName[]; suites: Suite[]
   };
 }
 
-/** Env var holding the embedding provider's API key. */
+/** Whether embeddings can run: local needs no key; cloud needs its provider key. */
 function embedKeyPresent(): boolean {
+  if (env.EMBED_LOCAL) return true;
   return env.EMBED_PROVIDER === 'openai'
     ? Boolean(env.OPENAI_API_KEY)
     : Boolean(env.GOOGLE_GENERATIVE_AI_API_KEY);
@@ -91,10 +92,11 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     // The index must have been built with the same embed model we'll query with.
+    const activeModel = env.EMBED_LOCAL ? env.EMBED_LOCAL_MODEL : env.EMBED_MODEL;
     const idx = JSON.parse(readFileSync(INDEX_PATH, 'utf8')) as KbIndex;
-    if (idx.embedModel !== env.EMBED_MODEL) {
+    if (idx.embedModel !== activeModel) {
       console.error(
-        `KB index was built with ${idx.embedModel} but EMBED_MODEL is ${env.EMBED_MODEL}. ` +
+        `KB index was built with ${idx.embedModel} but the active embed model is ${activeModel}. ` +
           `Re-run \`pnpm ingest\`.`,
       );
       process.exit(1);

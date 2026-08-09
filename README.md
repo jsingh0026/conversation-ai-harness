@@ -73,9 +73,15 @@ pnpm trace latest
 ```
 LLM_PROVIDER=claude
 ANTHROPIC_API_KEY=sk-ant-...        # a key for whichever LLM_PROVIDER you pick
-OPENAI_API_KEY=sk-...               # used for embeddings (EMBED_PROVIDER=openai)
+EMBED_LOCAL=true                    # embeddings run on-device — no embedding key needed
 CRM_MODE=mock
 ```
+
+**Embeddings, local or cloud.** `EMBED_LOCAL=true` runs a Transformers.js model
+(`Xenova/bge-small-en-v1.5`, 384-dim) fully on-device — the model downloads once (~130 MB) then
+needs no network or API key. Set `EMBED_LOCAL=false` to use a cloud embedder instead
+(`EMBED_PROVIDER=openai|gemini` + `EMBED_MODEL`, which then needs that provider's key). The chat
+LLM key is still required either way.
 
 `CRM_MODE=mock` runs the whole loop against an in-memory CRM — no HighLevel account required.
 To connect the real sandbox, set `CRM_MODE=highlevel` and follow [`docs/SETUP.md`](./docs/SETUP.md).

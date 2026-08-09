@@ -22,7 +22,16 @@ const EnvSchema = z.object({
   OPENAI_MODEL: z.string().default('gpt-4.1'),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
 
-  // --- Embeddings (Phase 3) ---
+  // --- Embeddings ---
+  // Local mode runs a Transformers.js model on-device (no API key). When false,
+  // embeddings use the cloud EMBED_PROVIDER + EMBED_MODEL below.
+  EMBED_LOCAL: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? ['1', 'true', 'yes'].includes(v.toLowerCase()) : v),
+      z.boolean(),
+    )
+    .default(false),
+  EMBED_LOCAL_MODEL: z.string().default('Xenova/bge-small-en-v1.5'),
   EMBED_PROVIDER: z.enum(['openai', 'gemini']).default('openai'),
   EMBED_MODEL: z.string().default('text-embedding-3-small'),
 
