@@ -18,6 +18,9 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+  // Optional OpenAI-compatible base URL (e.g. OpenRouter: https://openrouter.ai/api/v1).
+  // When set, the openai provider routes through it via the chat-completions API.
+  OPENAI_BASE_URL: z.string().optional(),
   CLAUDE_MODEL: z.string().default('claude-sonnet-5'),
   OPENAI_MODEL: z.string().default('gpt-4.1'),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),

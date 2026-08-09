@@ -12,6 +12,10 @@ import type {
 import { logger } from '../util/logger.js';
 import { toModelMessages, toToolSet } from './messages.js';
 
+/** Default output cap — replies are short (a text message), and it keeps requests
+ * within tight per-call budgets on metered gateways. Override via req.maxTokens. */
+const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
+
 /** Cross-version-safe read of the SDK's usage shape. */
 function readUsage(usage: unknown): { inputTokens: number; outputTokens: number } {
   const u = (usage ?? {}) as Record<string, number | undefined>;
@@ -54,7 +58,7 @@ export class AiSdkProvider implements LLMProvider {
             // Only send toolChoice when tools exist; otherwise the SDK warns.
             toolChoice: tools ? req.toolChoice : undefined,
             temperature: req.temperature,
-            maxOutputTokens: req.maxTokens,
+            maxOutputTokens: req.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
           });
           return {
             text: res.text ? res.text : null,
@@ -86,7 +90,7 @@ export class AiSdkProvider implements LLMProvider {
       tools,
       toolChoice: tools ? req.toolChoice : undefined,
       temperature: req.temperature,
-      maxOutputTokens: req.maxTokens,
+      maxOutputTokens: req.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
     });
 
     // Note: res.textStream does NOT surface provider errors — a failed call

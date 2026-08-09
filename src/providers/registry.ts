@@ -1,6 +1,6 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI, openai } from '@ai-sdk/openai';
 import { env } from '../config/env.js';
 import type { LLMProvider, ProviderName } from '../llm/types.js';
 import { AiSdkProvider } from './ai-sdk-provider.js';
@@ -23,8 +23,15 @@ export function createProvider(name: ProviderName = env.LLM_PROVIDER): LLMProvid
   switch (name) {
     case 'claude':
       return new AiSdkProvider('claude', env.CLAUDE_MODEL, anthropic(env.CLAUDE_MODEL));
-    case 'openai':
+    case 'openai': {
+      // Route through an OpenAI-compatible gateway (e.g. OpenRouter) when a base
+      // URL is set — those expose the chat-completions API, so use `.chat()`.
+      if (env.OPENAI_BASE_URL) {
+        const client = createOpenAI({ baseURL: env.OPENAI_BASE_URL, apiKey: env.OPENAI_API_KEY });
+        return new AiSdkProvider('openai', env.OPENAI_MODEL, client.chat(env.OPENAI_MODEL));
+      }
       return new AiSdkProvider('openai', env.OPENAI_MODEL, openai(env.OPENAI_MODEL));
+    }
     case 'gemini':
       return new AiSdkProvider('gemini', env.GEMINI_MODEL, google(env.GEMINI_MODEL));
     default:
