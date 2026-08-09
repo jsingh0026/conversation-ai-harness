@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import type { InboundMessage } from '../crm/types.js';
 
 /**
  * HighLevel inbound-message webhook payloads are loosely typed and vary by
- * channel. We normalize the fields we care about and tolerate the rest.
- * Kept permissive on purpose — Phase 7 tightens this against real payloads.
+ * channel/source. We normalize the fields we care about and tolerate the rest.
+ * A HighLevel *workflow* webhook can send the contact id + message body but not
+ * a stable message id or conversation id, so we derive those.
  */
 export interface HighLevelInboundWebhook {
   type?: string;
@@ -12,6 +14,7 @@ export interface HighLevelInboundWebhook {
   id?: string;
   conversationId?: string;
   contactId?: string;
+  contact_id?: string;
   body?: string;
   message?: string;
   messageType?: string;
@@ -27,20 +30,23 @@ export interface NormalizedWebhook {
 
 /**
  * Map a raw webhook body to our canonical InboundMessage, or return a reason
- * string when the payload isn't an inbound customer message we should act on.
+ * string when the payload isn't an actionable inbound message. Only the
+ * contactId and message body are strictly required.
  */
 export function normalizeWebhook(
   raw: HighLevelInboundWebhook,
 ): NormalizedWebhook | { skip: string } {
-  const messageId = raw.messageId ?? raw.id;
-  const conversationId = raw.conversationId;
-  const contactId = raw.contactId;
+  const contactId = raw.contactId ?? raw.contact_id;
   const body = (raw.body ?? raw.message ?? '').trim();
 
-  if (!messageId) return { skip: 'missing messageId' };
-  if (!conversationId) return { skip: 'missing conversationId' };
   if (!contactId) return { skip: 'missing contactId' };
   if (!body) return { skip: 'empty body' };
+
+  const conversationId = raw.conversationId ?? contactId;
+  // Prefer a real id; otherwise synthesize one that still dedupes rapid
+  // duplicate deliveries (same contact+body within a short window) while
+  // letting a genuine repeat later through.
+  const messageId = raw.messageId ?? raw.id ?? synthesizeMessageId(contactId, body);
 
   return {
     idempotencyKey: messageId,
@@ -53,4 +59,10 @@ export function normalizeWebhook(
       timestamp: raw.dateAdded ?? new Date().toISOString(),
     },
   };
+}
+
+function synthesizeMessageId(contactId: string, body: string): string {
+  const bucket = Math.floor(Date.now() / 10_000); // 10-second window
+  const hash = createHash('sha1').update(`${contactId}|${body}|${bucket}`).digest('hex');
+  return `gen_${hash.slice(0, 16)}`;
 }
