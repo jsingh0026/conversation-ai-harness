@@ -8,7 +8,7 @@
  * data/hl-token.json).
  */
 import { env } from '../../config/env.js';
-import { HlHttp } from './http.js';
+import type { HlHttp } from './http.js';
 import { getHighLevelContext } from './index.js';
 
 interface Calendar {
@@ -36,14 +36,15 @@ async function main(): Promise<void> {
 
   let http: HlHttp;
   try {
-    const ctx = getHighLevelContext();
-    // Force a token check up front for a clear error if not connected.
-    await ctx.tokenManager.getAccessToken();
-    http = new HlHttp(ctx.tokenManager);
+    const c = getHighLevelContext();
+    // For OAuth mode, verify a token exists up front for a clearer error.
+    if (c.tokenManager) await c.tokenManager.getAccessToken();
+    http = c.http;
   } catch (err) {
     console.error(
       `Not connected to HighLevel: ${err instanceof Error ? err.message : err}\n` +
-        'Start the server (`pnpm dev`) and visit http://localhost:3000/oauth/authorize first.',
+        'Either set HL_PRIVATE_TOKEN in .env, or start the server (`pnpm dev`) and visit ' +
+        'http://localhost:3000/oauth/authorize.',
     );
     process.exit(1);
   }

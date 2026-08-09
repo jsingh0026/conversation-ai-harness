@@ -7,6 +7,28 @@ const TOKEN_URL = 'https://services.leadconnectorhq.com/oauth/token';
 /** Refresh this many ms before actual expiry to avoid racing the boundary. */
 const REFRESH_SKEW_MS = 60_000;
 
+/** Anything that can supply a bearer token to the HTTP client (OAuth or a PIT). */
+export interface AccessTokenSource {
+  getAccessToken(): Promise<string>;
+  /** Refresh the token; static sources reject to signal "no retry possible". */
+  refresh(): Promise<unknown>;
+}
+
+/**
+ * A fixed Private Integration Token. No OAuth flow, no expiry/refresh — the
+ * simplest way to authenticate a sandbox/demo. `refresh()` rejects so the HTTP
+ * client knows a 401 can't be recovered by refreshing.
+ */
+export class StaticTokenProvider implements AccessTokenSource {
+  constructor(private readonly token: string) {}
+  async getAccessToken(): Promise<string> {
+    return this.token;
+  }
+  async refresh(): Promise<never> {
+    throw new Error('Private integration token cannot be refreshed');
+  }
+}
+
 export interface StoredToken {
   accessToken: string;
   refreshToken: string;
@@ -35,7 +57,7 @@ interface TokenResponse {
  * the token, and transparently refresh it before expiry. `fetch` and `now` are
  * injectable so the refresh logic is unit-testable without the network.
  */
-export class TokenManager {
+export class TokenManager implements AccessTokenSource {
   private token: StoredToken | undefined;
   private readonly tokenPath: string;
   private refreshing: Promise<StoredToken> | undefined;

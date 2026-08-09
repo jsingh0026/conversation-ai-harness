@@ -37,6 +37,9 @@ const EnvSchema = z.object({
 
   // --- CRM (mock until sandbox wired in Phase 7) ---
   CRM_MODE: z.enum(['mock', 'highlevel']).default('mock'),
+  // Simplest auth: a Private Integration Token (static bearer). When set, the
+  // client uses it directly and skips OAuth entirely. Otherwise OAuth is used.
+  HL_PRIVATE_TOKEN: z.string().optional(),
   HL_CLIENT_ID: z.string().optional(),
   HL_CLIENT_SECRET: z.string().optional(),
   HL_REDIRECT_URI: z.string().optional(),

@@ -1,4 +1,4 @@
-import type { TokenManager } from './token-manager.js';
+import type { AccessTokenSource } from './token-manager.js';
 
 const BASE_URL = 'https://services.leadconnectorhq.com';
 /** Default API version header; some endpoints (calendars) override it per-call. */
@@ -30,7 +30,7 @@ export interface RequestOptions {
  */
 export class HlHttp {
   constructor(
-    private readonly tokens: TokenManager,
+    private readonly tokens: AccessTokenSource,
     private readonly fetchImpl: FetchLike = fetch,
     private readonly baseUrl = BASE_URL,
   ) {}
@@ -59,9 +59,14 @@ export class HlHttp {
 
     let res = await doFetch(await this.tokens.getAccessToken());
     if (res.status === 401) {
-      // Token may have been revoked/rotated — refresh once and retry.
-      await this.tokens.refresh();
-      res = await doFetch(await this.tokens.getAccessToken());
+      // Refresh once and retry (OAuth). A static token source rejects on
+      // refresh(), so we skip the retry and surface the 401 below.
+      try {
+        await this.tokens.refresh();
+        res = await doFetch(await this.tokens.getAccessToken());
+      } catch {
+        /* cannot refresh (e.g. private integration token) — fall through */
+      }
     }
 
     const text = await res.text();

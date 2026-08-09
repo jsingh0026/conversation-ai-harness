@@ -8,6 +8,22 @@ this); this is the Phase 7 wiring checklist.
 1. Create a **HighLevel developer/agency account** and a **sub-account (Location)** to test in.
 2. Note the **Location ID** → `HL_LOCATION_ID`.
 
+## Auth: pick one
+
+**Option A — Private Integration Token (simplest, recommended for the demo).** No OAuth flow.
+1. In the sub-account: **Settings → Private Integrations → Create new integration**.
+2. Select scopes (Conversations read/write + messages, Contacts read/write, Calendars read + events
+   read/write, Users read, Custom Fields read).
+3. Copy the generated token → `.env` as `HL_PRIVATE_TOKEN=...`. Done — the harness uses it directly.
+4. **Inbound messages** then come via a **Workflow** (not an app webhook): sub-account → **Automation
+   → Workflows → Create** → trigger **"Customer Replied"** (or Inbound Message) → add a **Webhook**
+   action → POST to `<ngrok-url>/webhook`. Publish it.
+
+**Option B — Marketplace app + OAuth (full production pattern).** Steps 2–3 below. Use the app's
+**Install link** (not a hand-built URL) to authorize, then the app's `InboundMessage` webhook.
+
+Either way you still need the sub-account objects in §5.
+
 ## 2. Marketplace app (OAuth)
 1. In the Marketplace developer portal, **create an app**.
 2. Copy **Client ID** / **Client Secret** → `HL_CLIENT_ID`, `HL_CLIENT_SECRET`.

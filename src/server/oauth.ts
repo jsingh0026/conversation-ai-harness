@@ -21,6 +21,9 @@ export function registerOAuthRoutes(app: FastifyInstance): void {
     if (!code) return reply.code(400).send({ error: 'missing ?code' });
     try {
       const { tokenManager } = getHighLevelContext();
+      if (!tokenManager) {
+        return reply.code(400).send({ error: 'OAuth not in use — HL_PRIVATE_TOKEN is set' });
+      }
       const token = await tokenManager.exchangeCode(code);
       request.log.info({ locationId: token.locationId }, 'HighLevel authorized');
       return reply.send({ connected: true, locationId: token.locationId });
