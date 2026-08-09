@@ -10,7 +10,14 @@ import type { AgentTool } from '../orchestrator/agent-tool.js';
 const ParamsSchema = z
   .object({
     name: z.string().min(1).optional().describe('The customer\'s full name.'),
-    email: z.string().email().optional().describe('The customer\'s email address.'),
+    // Simple RE2-safe pattern (no lookaheads) so the tool schema validates on
+    // strict gateways like Groq; Zod's .email() emits a lookahead regex that
+    // RE2-based validators reject.
+    email: z
+      .string()
+      .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, 'Invalid email')
+      .optional()
+      .describe('The customer\'s email address.'),
     phone: z.string().min(3).optional().describe('The customer\'s phone number.'),
     budget: z.coerce
       .number()

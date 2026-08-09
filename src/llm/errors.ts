@@ -88,6 +88,11 @@ export function mapProviderError(err: unknown, provider: ProviderName): LLMError
     if ((status !== undefined && status >= 500) || err.isRetryable) {
       return new TransientError(message, opts);
     }
+    // Some providers (e.g. Groq/Llama) intermittently emit a malformed tool call
+    // and return this; a re-generation almost always succeeds, so retry it.
+    if (/failed to call a function|failed_generation|adjust your prompt/i.test(err.message)) {
+      return new TransientError(message, opts);
+    }
     return new ProviderError(message, opts);
   }
 
