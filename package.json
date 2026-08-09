@@ -18,7 +18,8 @@
     "ingest": "tsx src/rag/ingest.ts",
     "eval": "tsx evals/run.ts",
     "trace": "tsx src/trace/cli.ts",
-    "providers:smoke": "tsx src/providers/smoke.ts"
+    "providers:smoke": "tsx src/providers/smoke.ts",
+    "hl:ids": "tsx src/crm/highlevel/ids.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.35",
