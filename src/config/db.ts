@@ -1,6 +1,10 @@
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { env } from './env.js';
 import { logger } from '../util/logger.js';
+import * as schema from './schema.js';
+
+export type Db = NodePgDatabase<typeof schema>;
 
 /**
  * Lazily-created shared Postgres pool. Only constructed when DATABASE_URL is set
@@ -25,6 +29,14 @@ export function getPool(): Pool {
     logger.info('Postgres pool created');
   }
   return pool;
+}
+
+let dbInstance: Db | undefined;
+
+/** The shared Drizzle instance over the pg pool. Queries are written against this. */
+export function getDb(): Db {
+  if (!dbInstance) dbInstance = drizzle(getPool(), { schema });
+  return dbInstance;
 }
 
 /** Close the pool on shutdown (no-op if never created). */

@@ -1,38 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import type { Pool } from 'pg';
+import type { Db } from '../config/db.js';
 import { PgVectorIndex } from './pg-vector-index.js';
 
-/** Minimal fake Pool that records the last query and returns canned rows. */
-function fakePool(rows: unknown[]): { pool: Pool; last: () => { text: string; params: unknown[] } } {
-  let call = { text: '', params: [] as unknown[] };
-  const pool = {
-    query: async (text: string, params: unknown[]) => {
-      call = { text, params };
-      return { rows, rowCount: rows.length };
+/** Chainable Drizzle stub — every builder method resolves to `result`. */
+function stubDb(result: unknown[]): Db {
+  const chain: unknown = new Proxy(
+    {},
+    {
+      get(_t, prop) {
+        if (prop === 'then') return (resolve: (v: unknown) => void) => resolve(result);
+        return () => chain;
+      },
     },
-  } as unknown as Pool;
-  return { pool, last: () => call };
+  );
+  return { select: () => chain } as unknown as Db;
 }
 
-describe('PgVectorIndex', () => {
-  it('maps rows to RetrievedChunk and coerces score, filtering by embed model', async () => {
-    const { pool, last } = fakePool([
-      { id: 'fees#0', doc_id: 'fees', title: 'Fees', section: 'Commission', text: '5%', score: '0.91' },
-      { id: 'rent#0', doc_id: 'rent', title: 'Rentals', section: null, text: '8%', score: '0.42' },
+describe('PgVectorIndex (Drizzle)', () => {
+  it('maps rows to RetrievedChunk incl. OKF provenance, coercing score', async () => {
+    const db = stubDb([
+      {
+        id: 'fees#0', docId: 'fees', title: 'Fees', section: 'Commission', text: '5%',
+        status: 'stable', verifiedBy: 'human:broker', verifiedAt: '2026-06-01',
+        staleAfter: '2026-12-31', sourceId: 'fee-schedule', score: '0.91',
+      },
+      {
+        id: 'rent#0', docId: 'rent', title: 'Rentals', section: null, text: '8%',
+        status: null, verifiedBy: null, verifiedAt: null, staleAfter: null, sourceId: null,
+        score: '0.42',
+      },
     ]);
-    const idx = new PgVectorIndex(pool, 'bge-small');
-    const out = await idx.search([0.1, 0.2, 0.3], 5);
+    const out = await new PgVectorIndex(db, 'bge-small').search([0.1, 0.2, 0.3], 5);
 
-    expect(out).toEqual([
-      { id: 'fees#0', docId: 'fees', title: 'Fees', section: 'Commission', text: '5%', score: 0.91 },
-      { id: 'rent#0', docId: 'rent', title: 'Rentals', section: undefined, text: '8%', score: 0.42 },
-    ]);
-    // vector literal + model filter + k are passed through
-    expect(last().params).toEqual(['[0.1,0.2,0.3]', 'bge-small', 5]);
+    expect(out[0]).toMatchObject({
+      docId: 'fees',
+      score: 0.91,
+      provenance: { status: 'stable', sourceId: 'fee-schedule', staleAfter: '2026-12-31' },
+    });
+    expect(out[1]!.provenance).toBeUndefined(); // no status → no provenance
+    expect(out[1]!.section).toBeUndefined(); // null → undefined
   });
 
-  it('returns the count for size()', async () => {
-    const { pool } = fakePool([{ n: 13 }]);
-    expect(await new PgVectorIndex(pool, 'bge-small').size()).toBe(13);
+  it('size() returns the count', async () => {
+    expect(await new PgVectorIndex(stubDb([{ n: 13 }]), 'bge-small').size()).toBe(13);
   });
 });

@@ -1,5 +1,5 @@
 import { createProvider } from '../providers/registry.js';
-import { getPool } from '../config/db.js';
+import { getDb } from '../config/db.js';
 import { env, isDbEnabled } from '../config/env.js';
 import { logger } from '../util/logger.js';
 import type { CrmClient } from '../crm/types.js';
@@ -38,7 +38,7 @@ export function createOrchestratorStack(
   const history = new ConversationStore(40, env.HISTORY_IDLE_RESET_MIN * 60 * 1000);
   const orchestrator = new Orchestrator({ provider: createProvider(), crm, tools, history, promptVars });
   const idempotency: IdempotencyStore = isDbEnabled
-    ? new PgIdempotencyStore(getPool())
+    ? new PgIdempotencyStore(getDb())
     : new MemoryIdempotencyStore();
   logger.info({ backend: isDbEnabled ? 'postgres' : 'memory' }, 'idempotency store selected');
   return { orchestrator, queue: new KeyedQueue(), idempotency, history };

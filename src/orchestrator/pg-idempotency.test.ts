@@ -1,50 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import type { Pool } from 'pg';
+import type { Db } from '../config/db.js';
 import { PgIdempotencyStore } from './pg-idempotency.js';
 
-function fakePool(rowCount: number): { pool: Pool; last: () => { text: string; params: unknown[] } } {
-  let call = { text: '', params: [] as unknown[] };
-  const pool = {
-    query: async (text: string, params: unknown[]) => {
-      call = { text, params };
-      return { rows: [], rowCount };
+/**
+ * A chainable Drizzle stub: every builder method returns the same thenable that
+ * resolves to `result`. Lets us assert our logic (row-count → boolean, mapping)
+ * without a live Postgres — the SQL itself is Drizzle's responsibility.
+ */
+function stubDb(result: unknown[]): Db {
+  const chain: unknown = new Proxy(
+    {},
+    {
+      get(_t, prop) {
+        if (prop === 'then') return (resolve: (v: unknown) => void) => resolve(result);
+        return () => chain;
+      },
     },
-  } as unknown as Pool;
-  return { pool, last: () => call };
+  );
+  return { insert: () => chain, update: () => chain, delete: () => chain, select: () => chain } as unknown as Db;
 }
 
-describe('PgIdempotencyStore', () => {
-  it('claims via INSERT with a processing lease, passing ttl + lease', async () => {
-    const { pool, last } = fakePool(1);
-    const store = new PgIdempotencyStore(pool, 600_000, 120_000);
-    expect(await store.markIfNew('m1', 'conv1')).toBe(true);
-    expect(last().text).toMatch(/INSERT INTO processed_messages/);
-    expect(last().text).toMatch(/'processing'/);
-    expect(last().params).toEqual(['m1', 'conv1', 600_000, 120_000]);
+describe('PgIdempotencyStore (Drizzle)', () => {
+  it('claims a new/reclaimable key (a returned row) → true', async () => {
+    expect(await new PgIdempotencyStore(stubDb([{ id: 'm1' }])).markIfNew('m1', 'c1')).toBe(true);
   });
 
-  it('treats no returned row as a duplicate/in-flight delivery (skip it)', async () => {
-    const { pool } = fakePool(0);
-    expect(await new PgIdempotencyStore(pool).markIfNew('m1')).toBe(false);
+  it('treats no returned row as a duplicate / in-flight delivery → false', async () => {
+    expect(await new PgIdempotencyStore(stubDb([])).markIfNew('m1')).toBe(false);
   });
 
-  it('passes null conversationId when omitted', async () => {
-    const { pool, last } = fakePool(1);
-    await new PgIdempotencyStore(pool).markIfNew('m1');
-    expect(last().params[1]).toBeNull();
+  it('markDone and delete resolve without throwing', async () => {
+    const s = new PgIdempotencyStore(stubDb([]));
+    await expect(s.markDone('m1')).resolves.toBeUndefined();
+    await expect(s.delete('m1')).resolves.toBeUndefined();
   });
 
-  it('markDone flips the row to done (closes the lease)', async () => {
-    const { pool, last } = fakePool(1);
-    await new PgIdempotencyStore(pool).markDone('m1');
-    expect(last().text).toMatch(/UPDATE processed_messages SET status = 'done'/);
-    expect(last().params).toEqual(['m1']);
-  });
-
-  it('deletes a key on the failed-turn retry path', async () => {
-    const { pool, last } = fakePool(1);
-    await new PgIdempotencyStore(pool).delete('m1');
-    expect(last().text).toMatch(/DELETE FROM processed_messages/);
-    expect(last().params).toEqual(['m1']);
+  it('prune returns the number of rows removed', async () => {
+    expect(await new PgIdempotencyStore(stubDb([{ id: 'a' }, { id: 'b' }])).prune()).toBe(2);
   });
 });

@@ -1,19 +1,25 @@
 /**
- * Load the on-disk KB index into Postgres/pgvector.
+ * Embed the KB directly into Postgres/pgvector — no kb.json intermediate.
  *
- *   pnpm ingest        # build data/index/kb.json (local embeddings)
- *   pnpm ingest:pg     # load kb.json → kb_chunks
+ *   pnpm ingest:pg
  *
- * Reuses the embeddings already computed by `pnpm ingest` (no re-embedding).
- * Idempotent per embed model: it replaces all rows for the index's model in one
- * transaction, so removed/renamed chunks don't linger. Requires DATABASE_URL and
- * an applied schema (`pnpm db:migrate`).
+ * Reads kb/*.md → OKF-aware chunks → embeddings → kb_chunks (via Drizzle).
+ * Idempotent per embed model: replaces all rows for the current model in one
+ * pass, so removed/renamed chunks don't linger. Requires DATABASE_URL +
+ * PGVECTOR=true and an applied schema (`pnpm db:migrate`). Local dev uses this
+ * instead of the file index, so there's no json file to keep in sync.
  */
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
+import { closePool, getDb } from '../config/db.js';
 import { env } from '../config/env.js';
-import { closePool, getPool } from '../config/db.js';
-import { INDEX_PATH } from './retriever.js';
-import type { KbIndex } from './types.js';
+import { kbChunks } from '../config/schema.js';
+import { chunkMarkdown } from './chunk.js';
+import { createEmbedder } from './embedder.js';
+import type { Chunk } from './types.js';
+
+const KB_DIR = join(process.cwd(), 'kb');
 
 async function main(): Promise<void> {
   if (!env.DATABASE_URL) {
@@ -25,56 +31,54 @@ async function main(): Promise<void> {
     return;
   }
 
-  let index: KbIndex;
-  try {
-    index = JSON.parse(await readFile(INDEX_PATH, 'utf8')) as KbIndex;
-  } catch {
-    console.error(`No index at ${INDEX_PATH}. Run \`pnpm ingest\` first.`);
+  const embedder = createEmbedder();
+  const files = (await readdir(KB_DIR)).filter((f) => f.endsWith('.md')).sort();
+  if (files.length === 0) {
+    console.error(`No .md files found in ${KB_DIR}`);
     process.exit(1);
   }
 
-  if (index.dims !== 384) {
+  // Chunk every doc (OKF frontmatter parsed + provenance stamped), then embed.
+  const chunks: Chunk[] = [];
+  for (const file of files) {
+    const content = await readFile(join(KB_DIR, file), 'utf8');
+    chunks.push(...chunkMarkdown(file.replace(/\.md$/, ''), content));
+  }
+  const embeddings = await embedder.embedMany(chunks.map((c) => c.text));
+  const dims = embeddings[0]?.length ?? 0;
+  if (dims !== 384) {
     throw new Error(
-      `Index is ${index.dims}-dim but kb_chunks.embedding is vector(384). ` +
-        `Update db/schema.sql to match the embed model (${index.embedModel}).`,
+      `Embeddings are ${dims}-dim but kb_chunks.embedding is vector(384). ` +
+        `Update db/schema-pgvector.sql + src/config/schema.ts for ${embedder.model}.`,
     );
   }
 
-  const pool = getPool();
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    // Replace this model's rows wholesale so deletions/renames are reflected.
-    await client.query('DELETE FROM kb_chunks WHERE embed_model = $1', [index.embedModel]);
-    for (const c of index.chunks) {
-      const p = c.provenance;
-      await client.query(
-        `INSERT INTO kb_chunks (id, doc_id, title, section, text, embedding, embed_model,
-                                status, verified_by, verified_at, stale_after, source_id)
-              VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8, $9, $10, $11, $12)
-         ON CONFLICT (id) DO UPDATE
-              SET doc_id = EXCLUDED.doc_id, title = EXCLUDED.title, section = EXCLUDED.section,
-                  text = EXCLUDED.text, embedding = EXCLUDED.embedding, embed_model = EXCLUDED.embed_model,
-                  status = EXCLUDED.status, verified_by = EXCLUDED.verified_by,
-                  verified_at = EXCLUDED.verified_at, stale_after = EXCLUDED.stale_after,
-                  source_id = EXCLUDED.source_id`,
-        [
-          c.id, c.docId, c.title, c.section ?? null, c.text, `[${c.embedding.join(',')}]`,
-          index.embedModel, p?.status ?? null, p?.verifiedBy ?? null, p?.verifiedAt ?? null,
-          p?.staleAfter ?? null, p?.sourceId ?? null,
-        ],
-      );
-    }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
+  const db = getDb();
+  await db.delete(kbChunks).where(eq(kbChunks.embedModel, embedder.model));
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i]!;
+    const p = c.provenance;
+    const row = {
+      id: c.id,
+      docId: c.docId,
+      title: c.title,
+      section: c.section ?? null,
+      text: c.text,
+      embedding: embeddings[i]!,
+      embedModel: embedder.model,
+      status: p?.status ?? null,
+      verifiedBy: p?.verifiedBy ?? null,
+      verifiedAt: p?.verifiedAt ?? null,
+      staleAfter: p?.staleAfter ?? null,
+      sourceId: p?.sourceId ?? null,
+    };
+    await db.insert(kbChunks).values(row).onConflictDoUpdate({ target: kbChunks.id, set: row });
   }
 
+  const withProvenance = chunks.filter((c) => c.provenance).length;
   console.log(
-    `Loaded ${index.chunks.length} chunks (${index.dims}d [${index.embedModel}]) into kb_chunks.`,
+    `Loaded ${chunks.length} chunks (${dims}d [${embedder.model}], ${withProvenance} with OKF ` +
+      `provenance) into kb_chunks — direct embed, no kb.json.`,
   );
   await closePool();
 }

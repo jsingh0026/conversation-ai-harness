@@ -290,7 +290,7 @@ a cloud embedder (`EMBED_PROVIDER`/`EMBED_MODEL`). For the real sandbox + Fly de
 
 ```
 src/
-  config/        env schema (zod), pg pool, migrate
+  config/        env schema (zod), pg pool, Drizzle schema/db, migrate
   server/        Fastify app: /webhook (+auth), /health, OAuth routes
   orchestrator/  turn loop, idempotency (mem/pg), per-convo queue, history, tool dispatch
   providers/     LLMProvider over the Vercel AI SDK + registry

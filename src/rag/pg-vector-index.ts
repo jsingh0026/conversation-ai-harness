@@ -1,59 +1,54 @@
-import type { Pool } from 'pg';
+import { cosineDistance, eq, sql } from 'drizzle-orm';
+import type { Db } from '../config/db.js';
+import { kbChunks } from '../config/schema.js';
 import type { RetrievedChunk } from './types.js';
 import type { VectorIndex } from './vector-index.js';
 
-/** Serialize a JS number[] into a pgvector literal: `[0.1,0.2,...]`. */
-function toVectorLiteral(v: number[]): string {
-  return `[${v.join(',')}]`;
-}
-
 /**
- * pgvector-backed KB. Cosine distance (`<=>`) with an HNSW index gives ANN
- * search that stays fast as the KB grows; `score = 1 - distance` recovers the
- * cosine similarity the threshold logic expects. Rows are filtered by
- * embed_model so a re-ingest under a new model never mixes embedding spaces.
+ * pgvector-backed KB via Drizzle. Cosine distance (`<=>`) with an HNSW index
+ * gives ANN search that stays fast as the KB grows; `score = 1 - distance`
+ * recovers the cosine similarity the threshold logic expects. Rows are filtered
+ * by embed_model so a re-ingest under a new model never mixes embedding spaces.
+ * OKF provenance columns ride along on each row.
  */
 export class PgVectorIndex implements VectorIndex {
   constructor(
-    private readonly pool: Pool,
+    private readonly db: Db,
     private readonly embedModel: string,
   ) {}
 
   async size(): Promise<number> {
-    const res = await this.pool.query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM kb_chunks WHERE embed_model = $1',
-      [this.embedModel],
-    );
-    return res.rows[0]?.n ?? 0;
+    const [row] = await this.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(kbChunks)
+      .where(eq(kbChunks.embedModel, this.embedModel));
+    return row?.n ?? 0;
   }
 
   async search(queryEmbedding: number[], k: number): Promise<RetrievedChunk[]> {
-    const vec = toVectorLiteral(queryEmbedding);
-    const res = await this.pool.query<{
-      id: string;
-      doc_id: string;
-      title: string;
-      section: string | null;
-      text: string;
-      score: string;
-      status: string | null;
-      verified_by: string | null;
-      verified_at: string | null;
-      stale_after: string | null;
-      source_id: string | null;
-    }>(
-      `SELECT id, doc_id, title, section, text,
-              status, verified_by, verified_at, stale_after, source_id,
-              1 - (embedding <=> $1::vector) AS score
-         FROM kb_chunks
-        WHERE embed_model = $2
-        ORDER BY embedding <=> $1::vector
-        LIMIT $3`,
-      [vec, this.embedModel, k],
-    );
-    return res.rows.map((r) => ({
+    const distance = cosineDistance(kbChunks.embedding, queryEmbedding);
+    const rows = await this.db
+      .select({
+        id: kbChunks.id,
+        docId: kbChunks.docId,
+        title: kbChunks.title,
+        section: kbChunks.section,
+        text: kbChunks.text,
+        status: kbChunks.status,
+        verifiedBy: kbChunks.verifiedBy,
+        verifiedAt: kbChunks.verifiedAt,
+        staleAfter: kbChunks.staleAfter,
+        sourceId: kbChunks.sourceId,
+        score: sql<number>`1 - (${distance})`,
+      })
+      .from(kbChunks)
+      .where(eq(kbChunks.embedModel, this.embedModel))
+      .orderBy(distance) // ascending distance = most similar first
+      .limit(k);
+
+    return rows.map((r) => ({
       id: r.id,
-      docId: r.doc_id,
+      docId: r.docId,
       title: r.title,
       section: r.section ?? undefined,
       text: r.text,
@@ -61,10 +56,10 @@ export class PgVectorIndex implements VectorIndex {
       provenance: r.status
         ? {
             status: r.status as 'draft' | 'stable' | 'deprecated',
-            verifiedBy: r.verified_by ?? undefined,
-            verifiedAt: r.verified_at ?? undefined,
-            staleAfter: r.stale_after ?? undefined,
-            sourceId: r.source_id ?? undefined,
+            verifiedBy: r.verifiedBy ?? undefined,
+            verifiedAt: r.verifiedAt ?? undefined,
+            staleAfter: r.staleAfter ?? undefined,
+            sourceId: r.sourceId ?? undefined,
           }
         : undefined,
     }));

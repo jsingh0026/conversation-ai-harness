@@ -1,4 +1,4 @@
-import { getPool } from '../config/db.js';
+import { getDb } from '../config/db.js';
 import { isPgVectorEnabled } from '../config/env.js';
 import { logger } from '../util/logger.js';
 import { createEmbedder } from './embedder.js';
@@ -23,7 +23,7 @@ export function createKnowledgeTool(): AgentTool {
   const embedder = createEmbedder();
   if (isPgVectorEnabled) {
     logger.info({ backend: 'pgvector' }, 'KB vector store selected');
-    return createSearchKbTool(new Retriever(embedder, new PgVectorIndex(getPool(), embedder.model)));
+    return createSearchKbTool(new Retriever(embedder, new PgVectorIndex(getDb(), embedder.model)));
   }
   logger.info({ backend: 'file' }, 'KB vector store selected');
   return createSearchKbTool(new Retriever(embedder));

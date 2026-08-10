@@ -108,3 +108,34 @@ fly secrets set -a conversation-ai-harness \
   LANGFUSE_PUBLIC_KEY=pk-lf-… LANGFUSE_SECRET_KEY=sk-lf-… \
   LANGFUSE_BASEURL=https://conversation-ai-langfuse.fly.dev
 ```
+
+## 9. Local dev on Postgres + pgvector (no JSON index)
+
+Run the KB **and** idempotency in Postgres locally — the production-shaped path, no `kb.json`.
+DB access is **Drizzle ORM** (`src/config/schema.ts`); the pgvector `CREATE EXTENSION` + HNSW DDL is
+applied from `db/*.sql` by `pnpm db:migrate` (Drizzle can't express extensions). Needs local Postgres
+with the **pgvector** extension (Homebrew PG works):
+
+```sh
+brew install pgvector                                   # adds the extension to your local PG
+createdb conversation_ai
+psql conversation_ai -c 'CREATE EXTENSION vector;'
+
+# .env:
+#   DATABASE_URL=postgres://localhost:5432/conversation_ai
+#   PGVECTOR=true
+
+pnpm db:migrate     # core (processed_messages) + pgvector (kb_chunks) schema
+pnpm ingest:pg      # embeds the KB DIRECTLY into Postgres (no kb.json) — OKF provenance included
+pnpm dev            # retrieval hits pgvector; idempotency is Postgres-backed
+```
+
+Inspect the OKF provenance that ingestion stored:
+```sh
+psql conversation_ai -c \
+  "SELECT doc_id, status, verified_by, stale_after, source_id FROM kb_chunks LIMIT 8;"
+pnpm db:studio      # or browse the DB in Drizzle Studio
+```
+
+> Without `DATABASE_URL` the harness uses the in-memory idempotency store + the baked file index —
+> that's the zero-setup default and what runs on Fly (whose managed Postgres lacks pgvector).

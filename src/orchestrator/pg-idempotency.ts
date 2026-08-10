@@ -1,61 +1,62 @@
-import type { Pool } from 'pg';
+import { eq, sql } from 'drizzle-orm';
+import type { Db } from '../config/db.js';
+import { processedMessages } from '../config/schema.js';
 import type { IdempotencyStore } from './idempotency.js';
 
 /**
- * Durable, cross-instance webhook dedup with a processing lease. A claim inserts
- * (or reclaims) a `processing` row; success flips it to `done`. This closes the
- * crash-mid-turn gap: without a lease, a process that dies after claiming would
- * leave the key permanently "seen", so HighLevel's retry would be dropped and
- * the customer never answered. Reclaim rules:
+ * Durable, cross-instance webhook dedup with a processing lease (Drizzle over
+ * Postgres). A single `INSERT ... ON CONFLICT` is the atomic claim: a returned
+ * row means this delivery won the race (process it); no row means a recent
+ * duplicate / in-flight turn (drop it). This closes the crash-mid-turn gap —
+ * without the lease, a process that died after claiming would leave the key
+ * permanently "seen" and HighLevel's retry would be lost. Reclaim rules:
  *   - a `done` row past the dedup TTL  → genuine repeat, reprocess
  *   - a `processing` row past the lease → the previous attempt died, reprocess
- * Both TTL and lease are short enough to recover quickly, long enough that a
- * healthy in-flight turn (or a real duplicate burst) is still deduped.
  */
 export class PgIdempotencyStore implements IdempotencyStore {
   constructor(
-    private readonly pool: Pool,
+    private readonly db: Db,
     private readonly ttlMs = 10 * 60 * 1000,
     private readonly leaseMs = 2 * 60 * 1000,
   ) {}
 
   async markIfNew(key: string, conversationId?: string): Promise<boolean> {
-    const res = await this.pool.query(
-      `INSERT INTO processed_messages (message_id, conversation_id, status, processed_at)
-            VALUES ($1, $2, 'processing', now())
-       ON CONFLICT (message_id) DO UPDATE
-              SET status = 'processing',
-                  conversation_id = EXCLUDED.conversation_id,
-                  processed_at = now()
-            WHERE (processed_messages.status = 'done'
-                   AND processed_messages.processed_at < now() - ($3 * interval '1 millisecond'))
-               OR (processed_messages.status = 'processing'
-                   AND processed_messages.processed_at < now() - ($4 * interval '1 millisecond'))
-        RETURNING message_id`,
-      [key, conversationId ?? null, this.ttlMs, this.leaseMs],
-    );
-    return (res.rowCount ?? 0) > 0;
+    const rows = await this.db
+      .insert(processedMessages)
+      .values({ messageId: key, conversationId: conversationId ?? null, status: 'processing' })
+      .onConflictDoUpdate({
+        target: processedMessages.messageId,
+        set: { status: 'processing', conversationId: conversationId ?? null, processedAt: sql`now()` },
+        setWhere: sql`(${processedMessages.status} = 'done'
+                        AND ${processedMessages.processedAt} < now() - ${this.ttlMs} * interval '1 millisecond')
+                     OR (${processedMessages.status} = 'processing'
+                        AND ${processedMessages.processedAt} < now() - ${this.leaseMs} * interval '1 millisecond')`,
+      })
+      .returning({ id: processedMessages.messageId });
+    return rows.length > 0;
   }
 
   async markDone(key: string): Promise<void> {
     // Close the lease and restart the dedup TTL from completion time.
-    await this.pool.query(
-      `UPDATE processed_messages SET status = 'done', processed_at = now() WHERE message_id = $1`,
-      [key],
-    );
+    await this.db
+      .update(processedMessages)
+      .set({ status: 'done', processedAt: sql`now()` })
+      .where(eq(processedMessages.messageId, key));
   }
 
   async delete(key: string): Promise<void> {
-    await this.pool.query('DELETE FROM processed_messages WHERE message_id = $1', [key]);
+    await this.db.delete(processedMessages).where(eq(processedMessages.messageId, key));
   }
 
   /** Prune completed rows past the TTL. Call periodically; safe to run concurrently. */
   async prune(): Promise<number> {
-    const res = await this.pool.query(
-      `DELETE FROM processed_messages
-             WHERE status = 'done' AND processed_at < now() - ($1 * interval '1 millisecond')`,
-      [this.ttlMs],
-    );
-    return res.rowCount ?? 0;
+    const rows = await this.db
+      .delete(processedMessages)
+      .where(
+        sql`${processedMessages.status} = 'done'
+            AND ${processedMessages.processedAt} < now() - ${this.ttlMs} * interval '1 millisecond'`,
+      )
+      .returning({ id: processedMessages.messageId });
+    return rows.length;
   }
 }
