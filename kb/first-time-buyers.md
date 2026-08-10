@@ -1,3 +1,20 @@
+---
+type: policy
+title: Demo First Key (first-time buyers)
+description: Demo Realty's first-time-buyer program and closing-cost credit.
+tags: [first-time-buyers, financing]
+sources:
+  - id: first-key-program
+    resource: /policies/demo-first-key.pdf
+    author: human:broker
+    last_modified: 2026-05-01
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # First-Time Buyers: Demo First Key
 
 Buying your first home is a big milestone, and it can feel overwhelming. Our "Demo First Key" program is built to make the experience welcoming, clear, and rewarding.

@@ -15,8 +15,21 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
   section     TEXT,
   text        TEXT        NOT NULL,
   embedding   vector(384) NOT NULL,
-  embed_model TEXT        NOT NULL       -- guards against mixing embedding spaces
+  embed_model TEXT        NOT NULL,      -- guards against mixing embedding spaces
+  -- OKF provenance (nullable; plain-markdown docs have none)
+  status      TEXT,
+  verified_by TEXT,
+  verified_at TEXT,
+  stale_after TEXT,
+  source_id   TEXT
 );
+
+-- Idempotent adds for tables created before provenance existed.
+ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS status      TEXT;
+ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS verified_by TEXT;
+ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS verified_at TEXT;
+ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS stale_after TEXT;
+ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS source_id   TEXT;
 
 -- Approximate nearest-neighbour index for cosine distance (`<=>`).
 CREATE INDEX IF NOT EXISTS kb_chunks_embedding_hnsw

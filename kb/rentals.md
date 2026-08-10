@@ -1,3 +1,14 @@
+---
+type: policy
+title: Rentals
+tags: [rentals]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # Rentals
 
 Demo Realty serves both sides of the rental market in Marisol Bay county: renters looking for a home, and landlords who need their property managed.

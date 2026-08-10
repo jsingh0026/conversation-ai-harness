@@ -36,8 +36,14 @@ export class PgVectorIndex implements VectorIndex {
       section: string | null;
       text: string;
       score: string;
+      status: string | null;
+      verified_by: string | null;
+      verified_at: string | null;
+      stale_after: string | null;
+      source_id: string | null;
     }>(
       `SELECT id, doc_id, title, section, text,
+              status, verified_by, verified_at, stale_after, source_id,
               1 - (embedding <=> $1::vector) AS score
          FROM kb_chunks
         WHERE embed_model = $2
@@ -52,6 +58,15 @@ export class PgVectorIndex implements VectorIndex {
       section: r.section ?? undefined,
       text: r.text,
       score: Number(r.score),
+      provenance: r.status
+        ? {
+            status: r.status as 'draft' | 'stable' | 'deprecated',
+            verifiedBy: r.verified_by ?? undefined,
+            verifiedAt: r.verified_at ?? undefined,
+            staleAfter: r.stale_after ?? undefined,
+            sourceId: r.source_id ?? undefined,
+          }
+        : undefined,
     }));
   }
 }

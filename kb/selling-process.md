@@ -1,3 +1,14 @@
+---
+type: policy
+title: Selling Process
+tags: [selling-process]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # The Selling Process
 
 Selling your home with Demo Realty is a partnership. We handle the details so you can focus on your next move. Our seller commission is 5% of the final sale price.

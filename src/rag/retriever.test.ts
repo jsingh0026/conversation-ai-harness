@@ -67,3 +67,39 @@ describe('Retriever', () => {
     expect(result.grounded).toBe(false);
   });
 });
+
+// Provenance-aware grounding (OKF): deprecated / expired sources are not used.
+async function retrieverWith(provenance: EmbeddedChunk['provenance']) {
+  const embedder = new FakeEmbedder();
+  const text = 'Our seller commission is five percent of the sale price.';
+  const [embedding] = await embedder.embedMany([text]);
+  const retriever = new Retriever(embedder);
+  retriever.useStore(
+    new VectorStore([{ id: 'fees#0', docId: 'fees', title: 'fees', text, embedding: embedding!, provenance }]),
+  );
+  return retriever;
+}
+const Q = 'what is your seller commission price';
+
+describe('Retriever — provenance-aware grounding', () => {
+  it('grounds a fresh, verified, stable source', async () => {
+    const r = await retrieverWith({ status: 'stable', staleAfter: '2099-12-31', verifiedBy: 'human:broker' });
+    const res = await r.retrieve(Q, { threshold: 0.3 });
+    expect(res.grounded).toBe(true);
+    expect(res.chunks[0]?.provenance?.status).toBe('stable');
+  });
+
+  it('declines with reason "stale" when the only match is deprecated', async () => {
+    const r = await retrieverWith({ status: 'deprecated' });
+    const res = await r.retrieve(Q, { threshold: 0.3 });
+    expect(res.grounded).toBe(false);
+    expect(res.reason).toBe('stale');
+  });
+
+  it('declines with reason "stale" when the match is past stale_after', async () => {
+    const r = await retrieverWith({ status: 'stable', staleAfter: '2020-01-01' });
+    const res = await r.retrieve(Q, { threshold: 0.3, now: Date.parse('2026-01-01') });
+    expect(res.grounded).toBe(false);
+    expect(res.reason).toBe('stale');
+  });
+});

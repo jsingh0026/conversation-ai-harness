@@ -1,3 +1,20 @@
+---
+type: policy
+title: Seller & Rental Commissions
+description: What Demo Realty charges to sell a home or manage a rental.
+tags: [fees, selling, rentals]
+sources:
+  - id: fee-schedule
+    resource: /policies/fee-schedule-2026.pdf
+    author: human:broker
+    last_modified: 2026-05-01
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # Fees and Commissions
 
 Demo Realty believes in transparent, straightforward pricing. Here is exactly what our services cost.

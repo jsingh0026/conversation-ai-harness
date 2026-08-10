@@ -1,3 +1,19 @@
+---
+type: reference
+title: Contact & Office Hours
+description: How to reach Demo Realty and when we're open.
+tags: [contact, hours]
+sources:
+  - id: office-info
+    resource: /locations/marisol-bay
+    last_modified: 2026-05-01
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # Contact and Hours
 
 We would love to hear from you. Here is everything you need to reach Demo Realty.

@@ -1,3 +1,14 @@
+---
+type: policy
+title: Viewings And Appointments
+tags: [viewings-and-appointments]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # Viewings and Appointments
 
 Seeing a home in person is where the search comes to life. Here is how viewings work at Demo Realty.

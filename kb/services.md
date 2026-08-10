@@ -1,3 +1,14 @@
+---
+type: reference
+title: Services
+tags: [services]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # Our Services
 
 Demo Realty offers a full range of residential real-estate services across Marisol Bay and its surrounding county. Everything we do centers on homes and the people who live in them.

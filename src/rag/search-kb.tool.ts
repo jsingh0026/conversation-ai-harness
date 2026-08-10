@@ -38,14 +38,23 @@ export function createSearchKbTool(retriever: Retriever): AgentTool {
       ctx.trace.addRetrievalStep({
         query,
         latencyMs: Date.now() - t0,
-        chunks: result.chunks.map((c) => ({ docId: c.docId, score: c.score, text: c.text })),
+        chunks: result.chunks.map((c) => ({
+          docId: c.docId,
+          score: c.score,
+          text: c.text,
+          provenance: c.provenance,
+        })),
         grounded: result.grounded,
+        reason: result.reason,
       });
 
       if (!result.grounded) {
         return {
           grounded: false,
-          message: 'No relevant information found in the knowledge base.',
+          message:
+            result.reason === 'stale'
+              ? 'The only matching information is out of date; do not quote it. Tell the customer this may have changed and offer to connect them with an agent.'
+              : 'No relevant information found in the knowledge base.',
           results: [],
         };
       }

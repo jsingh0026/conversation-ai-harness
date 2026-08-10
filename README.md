@@ -140,7 +140,11 @@ provider = one case in `src/providers/registry.ts`. **Switch = `LLM_PROVIDER` en
 so chit-chat and skill turns never touch the vector store (the assignment's core RAG concern). A
 heading-aware chunker → on-device embeddings (`bge-small`, 384-dim) → cosine search. A similarity
 **threshold** produces an explicit `grounded:false` signal, so the agent **declines rather than
-invents** when the KB has no answer. 14 KB docs → 94 chunks.
+invents** when the KB has no answer. KB docs carry **OKF (Open Knowledge Format) frontmatter** —
+`status` / `verified` / `stale_after` / `source` — so grounding is **provenance-aware**: a match
+that's `deprecated` or past `stale_after` is declined with reason `stale` (never quote outdated
+policy), and each source's trust + freshness rides along into the trace. 14 KB docs → 94 chunks.
+See [`docs/OKF_DESIGN.md`](./docs/OKF_DESIGN.md).
 
 **3. Extensible skills.** Each skill is an `AgentTool` (name + Zod schema + `run`), and the schema is
 surfaced to the model and validated on the way in. Adding one is **registration** — a file plus an

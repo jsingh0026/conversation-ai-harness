@@ -1,3 +1,14 @@
+---
+type: policy
+title: Buying Process
+tags: [buying-process]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # The Buying Process
 
 Buying a home with Demo Realty is designed to be clear and unhurried. Here is how it typically unfolds. Remember, buyer representation is free to you.

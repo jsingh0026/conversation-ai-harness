@@ -47,13 +47,22 @@ async function main(): Promise<void> {
     // Replace this model's rows wholesale so deletions/renames are reflected.
     await client.query('DELETE FROM kb_chunks WHERE embed_model = $1', [index.embedModel]);
     for (const c of index.chunks) {
+      const p = c.provenance;
       await client.query(
-        `INSERT INTO kb_chunks (id, doc_id, title, section, text, embedding, embed_model)
-              VALUES ($1, $2, $3, $4, $5, $6::vector, $7)
+        `INSERT INTO kb_chunks (id, doc_id, title, section, text, embedding, embed_model,
+                                status, verified_by, verified_at, stale_after, source_id)
+              VALUES ($1, $2, $3, $4, $5, $6::vector, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (id) DO UPDATE
               SET doc_id = EXCLUDED.doc_id, title = EXCLUDED.title, section = EXCLUDED.section,
-                  text = EXCLUDED.text, embedding = EXCLUDED.embedding, embed_model = EXCLUDED.embed_model`,
-        [c.id, c.docId, c.title, c.section ?? null, c.text, `[${c.embedding.join(',')}]`, index.embedModel],
+                  text = EXCLUDED.text, embedding = EXCLUDED.embedding, embed_model = EXCLUDED.embed_model,
+                  status = EXCLUDED.status, verified_by = EXCLUDED.verified_by,
+                  verified_at = EXCLUDED.verified_at, stale_after = EXCLUDED.stale_after,
+                  source_id = EXCLUDED.source_id`,
+        [
+          c.id, c.docId, c.title, c.section ?? null, c.text, `[${c.embedding.join(',')}]`,
+          index.embedModel, p?.status ?? null, p?.verifiedBy ?? null, p?.verifiedAt ?? null,
+          p?.staleAfter ?? null, p?.sourceId ?? null,
+        ],
       );
     }
     await client.query('COMMIT');

@@ -1,3 +1,4 @@
+import { parseOkf } from './okf.js';
 import type { Chunk } from './types.js';
 
 /** ~500 tokens ≈ 2000 chars; overlap keeps context across window boundaries. */
@@ -17,7 +18,10 @@ interface Section {
  * The first `#`/`##` heading becomes the doc title.
  */
 export function chunkMarkdown(docId: string, content: string): Chunk[] {
-  const { title, sections } = splitSections(content);
+  // Strip OKF frontmatter first (never embed it) and carry its provenance onto
+  // every chunk of this doc.
+  const { body: markdown, provenance } = parseOkf(content);
+  const { title, sections } = splitSections(markdown);
   const chunks: Chunk[] = [];
 
   for (const section of sections) {
@@ -33,6 +37,7 @@ export function chunkMarkdown(docId: string, content: string): Chunk[] {
         title,
         section: section.heading,
         text: prefix + piece,
+        provenance,
       });
     }
   }

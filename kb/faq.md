@@ -1,3 +1,14 @@
+---
+type: reference
+title: Faq
+tags: [faq]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # Frequently Asked Questions
 
 Quick answers to the questions we hear most often. For anything not covered here, call (555) 012-8899 or email hello@demorealty.example.

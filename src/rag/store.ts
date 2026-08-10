@@ -39,6 +39,7 @@ export class VectorStore {
         section: c.section,
         text: c.text,
         score: cosineSimilarity(queryEmbedding, c.embedding),
+        provenance: c.provenance,
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, k);

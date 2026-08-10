@@ -1,4 +1,5 @@
 import type { ProviderName } from '../llm/types.js';
+import type { Provenance } from '../rag/types.js';
 
 /** What the harness decided to do on a turn — the headline of the trace. */
 export type TraceDecision =
@@ -37,8 +38,10 @@ export interface RetrievalStep {
   type: 'retrieval';
   query: string;
   latencyMs: number;
-  chunks: { docId: string; score: number; text: string }[];
+  chunks: { docId: string; score: number; text: string; provenance?: Provenance }[];
   grounded: boolean;
+  /** 'stale' when only deprecated/expired docs matched (grounded=false). */
+  reason?: 'stale';
 }
 
 export type TraceStep = ProviderStep | ToolStep | RetrievalStep;

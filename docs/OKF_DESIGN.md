@@ -1,6 +1,8 @@
 # OKF-formatted KB + provenance-in-the-trace — design sketch
 
-Status: **design only, not implemented.** Explores adopting Google's
+Status: **implemented.** All 13 KB docs carry OKF frontmatter; the ingester parses it, retrieval is
+provenance-aware (declines `stale`/deprecated), and the trace/Langfuse `sources` show status +
+verifier + freshness. Originally a design sketch — kept below as the rationale. Adopts Google's
 [Open Knowledge Format (OKF)](https://www.mindstudio.ai/blog/what-is-open-knowledge-format-okf-google-ai-knowledge-bases)
 as the KB *authoring format* while keeping our vector retrieval as the *finder*.
 
@@ -125,8 +127,10 @@ untouched.
 - **Upside:** stronger *groundedness* (declines stale/deprecated, not just low-similarity) and richer
   *transparency* (trust + freshness in every trace) — both graded criteria.
 - **Cost:** modest for a 14-doc static KB; authoring overhead per doc; OKF is early (v0.1, GCP-incubated).
-- **Recommendation:** don't build now — document as the governance/scale upgrade path; adopt the OKF
-  frontmatter subset (provenance) first if/when the KB grows or needs auditability.
+- **What shipped:** the OKF frontmatter subset (provenance) + provenance-aware grounding + trace
+  provenance — behind the existing seams (`rag/okf.ts`, `rag/types.ts`, `chunk.ts`, `retriever.ts`,
+  `trace/exporters/langfuse.ts`; pg columns for parity). The deeper OKF features (typed concepts,
+  attested computations, link-graph navigation) remain future work, appropriate to a larger KB.
 
 ## References
 - [MindStudio: What is OKF](https://www.mindstudio.ai/blog/what-is-open-knowledge-format-okf-google-ai-knowledge-bases) ·

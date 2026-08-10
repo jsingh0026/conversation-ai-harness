@@ -1,3 +1,14 @@
+---
+type: reference
+title: About
+tags: [about]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # About Demo Realty
 
 Demo Realty is a boutique residential real-estate brokerage serving the city of Marisol Bay and its surrounding county. We were founded in 2016 with a simple belief: that buying, selling, or renting a home should feel guided, transparent, and genuinely personal.

@@ -1,3 +1,14 @@
+---
+type: reference
+title: Neighborhoods
+tags: [neighborhoods]
+generated: { by: human:jaspreet, at: 2026-05-01T10:00:00Z }
+verified:
+  - { by: human:broker, at: 2026-06-01T09:00:00Z }
+status: stable
+stale_after: 2026-12-31
+---
+
 # Marisol Bay Neighborhoods
 
 Marisol Bay is a city of distinct communities, each with its own character. Demo Realty serves all five of these neighborhoods and knows them well. Here is a short profile of each.

@@ -1,19 +1,24 @@
 import { Langfuse } from 'langfuse';
 import { env } from '../../config/env.js';
 import { logger } from '../../util/logger.js';
+import type { Provenance } from '../../rag/types.js';
 import type { TraceExporter } from '../exporter.js';
 import type { Trace, TraceStep } from '../types.js';
 
-/** Which KB docs a retrieval step touched, with paths + scores (for the trace UI). */
-function sourcesOf(chunks: { docId: string; score: number }[]): {
-  doc: string;
-  path: string;
-  score: number;
-}[] {
+/** Which KB docs a retrieval step touched — path + score + OKF provenance. */
+function sourcesOf(chunks: { docId: string; score: number; provenance?: Provenance }[]): unknown[] {
   return chunks.map((c) => ({
     doc: c.docId,
     path: `kb/${c.docId}.md`,
     score: Math.round(c.score * 1000) / 1000,
+    ...(c.provenance && {
+      status: c.provenance.status,
+      verified: c.provenance.verifiedBy
+        ? `${c.provenance.verifiedBy}@${c.provenance.verifiedAt ?? '?'}`
+        : undefined,
+      freshUntil: c.provenance.staleAfter,
+      source: c.provenance.sourceId,
+    }),
   }));
 }
 
@@ -113,18 +118,20 @@ export class LangfuseExporter implements TraceExporter {
       } else if (step.type === 'retrieval') {
         const topScore = step.chunks[0]?.score ?? 0;
         lfTrace.span({
-          name: `${stepNo}·retrieval:${step.grounded ? 'grounded' : 'no-match'}`,
+          name: `${stepNo}·retrieval:${step.grounded ? 'grounded' : step.reason === 'stale' ? 'stale' : 'no-match'}`,
           input: step.query,
           output: {
             grounded: step.grounded,
+            reason: step.reason,
             threshold: env.RAG_SCORE_THRESHOLD,
-            sources: sourcesOf(step.chunks), // which docs + paths + scores
+            sources: sourcesOf(step.chunks), // docs + paths + scores + OKF provenance
             chunks: step.chunks,
           },
           startTime,
           endTime,
           metadata: {
             grounded: step.grounded,
+            reason: step.reason,
             threshold: env.RAG_SCORE_THRESHOLD,
             topScore: Math.round(topScore * 1000) / 1000,
             chunkCount: step.chunks.length,
