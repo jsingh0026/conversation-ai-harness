@@ -64,26 +64,43 @@ Copy `.env.example` → `.env` and fill in the values above. API base + version 
 
 ---
 
-## 7. Deploy to Fly (Postgres + pgvector)
+## 7. Deploy to Fly (Managed Postgres + pgvector)
 
-The harness runs DB-less locally; on Fly it uses Postgres for the KB (pgvector) and webhook
-idempotency. `Dockerfile` bakes the KB index + embed model; `fly.toml` keeps one warm machine.
+The harness runs on Postgres both locally and on Fly. Use **Fly Managed Postgres (MPG)** — it ships
+the `vector` extension, so the KB lives in pgvector in production (with `PGVECTOR=true` in `fly.toml`)
+and idempotency is Postgres-backed. `fly.toml` keeps one warm machine; the deploy `release_command`
+runs `migrate` (schema + HNSW index) then `ingest-pg` (embeds the KB into Postgres — no `kb.json`).
+
+> Why MPG and not `fly postgres create`? Fly's self-hosted **Postgres-Flex** image does **not** bundle
+> pgvector (`vector` isn't in `pg_available_extensions` and there's no `vector.so`), and you can't
+> durably install it. MPG offers `vector` as a first-class extension.
 
 ```sh
-flyctl auth login                     # interactive
-fly launch --no-deploy                # create the app from fly.toml
-fly postgres create                   # provision Postgres
-fly postgres attach <pg-app>          # sets DATABASE_URL secret
-fly secrets set \
+flyctl auth login                              # interactive
+fly launch --no-deploy                         # create the app from fly.toml
+fly mpg create --org <org> --name <cluster> \
+  --region sin --plan development --pg-major-version 17   # provision Managed Postgres
+# → Enable pgvector: Fly dashboard → cluster → Extensions → toggle `vector` ON (schema: public).
+#   The app role isn't superuser, so CREATE EXTENSION is a management-plane action.
+fly mpg attach <cluster-id> -a <app>           # sets the DATABASE_URL secret (pgbouncer pooler)
+fly secrets set -a <app> \
   LLM_PROVIDER=openai OPENAI_API_KEY=… OPENAI_BASE_URL=https://api.groq.com/openai/v1 \
   OPENAI_MODEL=openai/gpt-oss-120b HL_PRIVATE_TOKEN=… HL_LOCATION_ID=… HL_CALENDAR_ID=… \
   HL_CALENDAR_USER_ID=… HL_HANDOVER_USER_ID=… HL_FIELD_BUDGET_ID=… HL_FIELD_PREFERRED_TIME_ID=… \
   HL_WEBHOOK_SECRET=$(openssl rand -hex 24)     # then send this secret as the webhook's x-webhook-secret header
-fly deploy                            # builds, runs migrate + ingest:pg, ships
+fly deploy                                     # builds, runs migrate + ingest-pg, ships
 ```
+
+`fly.toml` sets `PGVECTOR = "true"`. `db/schema-pgvector.sql` guards `CREATE EXTENSION` in a
+`DO/EXCEPTION` block so the non-superuser migration succeeds when `vector` is already enabled on MPG.
 
 A stable `https://<app>.fly.dev` URL replaces ngrok — point the HighLevel workflow webhook at
 `…/webhook` once (add header `x-webhook-secret: <the secret above>`).
+
+> **Re-attaching MPG when `DATABASE_URL` already exists:** `fly secrets unset DATABASE_URL -a <app>
+> --stage` first, then `fly mpg attach`. If migrating off an old flex cluster, destroy it afterwards
+> (`fly postgres destroy <old-pg>`) so it stops billing — the KB is re-ingested from source on deploy
+> and idempotency data is ephemeral, so nothing is lost.
 
 ## 8. Self-hosted Langfuse (tracing)
 

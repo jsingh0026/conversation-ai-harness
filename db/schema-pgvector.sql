@@ -4,7 +4,16 @@
 -- a pgvector-capable Postgres (or Fly Managed Postgres) to enable this. Without
 -- it, the KB uses the baked on-disk index (db/schema.sql still applies).
 
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Enable pgvector. On a self-owned Postgres (local dev) this creates it. On Fly
+-- Managed Postgres the `vector` extension is enabled out-of-band via the cluster's
+-- Extensions dashboard (the app role isn't superuser), so here it's already present
+-- and we swallow the privilege error rather than aborting the migration.
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS vector;
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'vector extension not creatable by this role; assuming it is enabled out-of-band (e.g. Fly MPG dashboard)';
+END $$;
 
 -- KB vector store. Dimension is fixed to the embed model in use
 -- (Xenova/bge-small-en-v1.5 → 384). Changing models means a new migration.

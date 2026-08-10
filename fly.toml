@@ -20,6 +20,9 @@ primary_region = "sin" # pick one near your users / HighLevel; e.g. sin, bom, ia
   EMBED_LOCAL = "true"
   EMBED_LOCAL_MODEL = "Xenova/bge-small-en-v1.5"
   CRM_MODE = "highlevel"
+  # KB lives in Postgres (pgvector) — we run on Fly Managed Postgres, which ships
+  # the vector extension. release_command applies the pgvector schema + ingests.
+  PGVECTOR = "true"
 
 # Runs on each deploy before the new version takes traffic. Guarded so a DB-less
 # deploy still works: with Postgres attached it applies the core schema (and, when
