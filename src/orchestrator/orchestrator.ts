@@ -27,6 +27,10 @@ export interface OrchestratorDeps {
   /** Reply sent on a handed-over (bot-disabled) turn so the chat isn't silent.
    *  Empty string = stay silent (legacy). Defaults to env.HANDOVER_HOLDING_MESSAGE. */
   holdingMessage?: string;
+  /** Best-effort reply sent when a turn throws (LLM/RAG/CRM error) so the
+   *  customer gets a graceful message instead of silence. Empty = stay silent.
+   *  Defaults to env.AGENT_FALLBACK_MESSAGE. */
+  fallbackMessage?: string;
 }
 
 const FALLBACK_REPLY =
@@ -52,6 +56,7 @@ export class Orchestrator {
   private readonly promptVars: SystemPromptVars;
   private readonly maxSteps: number;
   private readonly holdingMessage: string;
+  private readonly fallbackMessage: string;
 
   constructor(deps: OrchestratorDeps) {
     this.provider = deps.provider;
@@ -62,6 +67,7 @@ export class Orchestrator {
     this.promptVars = deps.promptVars ?? {};
     this.maxSteps = deps.maxSteps ?? 6;
     this.holdingMessage = deps.holdingMessage ?? env.HANDOVER_HOLDING_MESSAGE;
+    this.fallbackMessage = deps.fallbackMessage ?? env.AGENT_FALLBACK_MESSAGE;
   }
 
   async runTurn(message: InboundMessage): Promise<Trace> {
@@ -134,7 +140,29 @@ export class Orchestrator {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err, conversationId: message.conversationId }, 'turn failed');
       trace.setError(msg);
-      trace.setReply(null);
+
+      // Don't go silent on the customer. Best-effort graceful fallback so a
+      // failed turn (LLM/RAG/CRM blip) still gets an acknowledgement rather than
+      // dead air. Wrapped so a failing send can't mask the original error.
+      if (this.fallbackMessage) {
+        try {
+          await this.crm.sendMessage({
+            conversationId: message.conversationId,
+            contactId: message.contactId,
+            channel: message.channel,
+            body: this.fallbackMessage,
+          });
+          trace.setReply(this.fallbackMessage);
+        } catch (sendErr) {
+          logger.error(
+            { err: sendErr, conversationId: message.conversationId },
+            'fallback send failed',
+          );
+          trace.setReply(null);
+        }
+      } else {
+        trace.setReply(null);
+      }
       return await this.complete(trace);
     }
   }

@@ -23,3 +23,15 @@ ALTER TABLE processed_messages
 
 CREATE INDEX IF NOT EXISTS processed_messages_processed_at
   ON processed_messages (processed_at);
+
+-- HighLevel OAuth token (single row, id = 'default'). Stored here so it survives
+-- deploys — on Fly the machine filesystem is ephemeral, so a file-based token is
+-- lost on every deploy. Only used in OAuth mode (HL_PRIVATE_TOKEN unset).
+CREATE TABLE IF NOT EXISTS hl_oauth_token (
+  id            TEXT PRIMARY KEY,            -- always 'default'
+  access_token  TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_at    BIGINT NOT NULL,             -- epoch ms
+  location_id   TEXT,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

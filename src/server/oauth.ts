@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { env } from '../config/env.js';
 import { buildAuthorizeUrl, getHighLevelContext } from '../crm/highlevel/index.js';
 
 /**
@@ -26,6 +27,10 @@ export function registerOAuthRoutes(app: FastifyInstance): void {
       }
       const token = await tokenManager.exchangeCode(code);
       request.log.info({ locationId: token.locationId }, 'HighLevel authorized');
+      // Send the installer to the web app on success (configurable). Empty ⇒ JSON.
+      if (env.OAUTH_SUCCESS_REDIRECT) {
+        return reply.redirect(env.OAUTH_SUCCESS_REDIRECT);
+      }
       return reply.send({ connected: true, locationId: token.locationId });
     } catch (err) {
       request.log.error({ err }, 'oauth callback failed');

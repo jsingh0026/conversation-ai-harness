@@ -46,6 +46,13 @@ const EnvSchema = z.object({
   HL_CLIENT_ID: z.string().optional(),
   HL_CLIENT_SECRET: z.string().optional(),
   HL_REDIRECT_URI: z.string().optional(),
+  // Where to send the browser after a successful OAuth connect (default: the
+  // demo web app). Set to empty to return the JSON payload instead of redirecting.
+  OAUTH_SUCCESS_REDIRECT: z.string().default('/'),
+  // 32-byte hex key (`openssl rand -hex 32`) for encrypting the OAuth token at
+  // rest in Postgres. Held as a deploy secret, never in the DB. If unset, the
+  // token is stored plaintext (a warning is logged in OAuth mode).
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
   HL_LOCATION_ID: z.string().optional(),
   HL_WEBHOOK_SECRET: z.string().optional(),
   HL_CALENDAR_ID: z.string().optional(),
@@ -61,6 +68,13 @@ const EnvSchema = z.object({
   HANDOVER_HOLDING_MESSAGE: z
     .string()
     .default('Thanks for your message! A team member will follow up with you shortly.'),
+  // Sent (best-effort) when a turn fails mid-way (LLM/RAG/CRM error) so the
+  // customer gets a graceful reply instead of silence. Empty = stay silent.
+  AGENT_FALLBACK_MESSAGE: z
+    .string()
+    .default(
+      "Sorry — I'm having trouble on my end right now. A team member will follow up with you shortly.",
+    ),
 
   // --- RAG ---
   RAG_SCORE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.35),

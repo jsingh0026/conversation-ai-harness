@@ -1,7 +1,9 @@
-import { env } from '../../config/env.js';
+import { env, isDbEnabled } from '../../config/env.js';
+import { getDb } from '../../config/db.js';
 import { HighLevelClient } from './client.js';
 import { HlHttp } from './http.js';
 import { StaticTokenProvider, TokenManager } from './token-manager.js';
+import { PgTokenStore } from './token-store-pg.js';
 
 export { HighLevelClient } from './client.js';
 export { TokenManager, StaticTokenProvider } from './token-manager.js';
@@ -70,6 +72,9 @@ export function getHighLevelContext(): HlContext {
     clientId: cfg.clientId,
     clientSecret: cfg.clientSecret,
     redirectUri: cfg.redirectUri,
+    // Durable on Fly: persist the token in Postgres so it survives deploys.
+    // Falls back to the 0600 JSON file locally (no DATABASE_URL).
+    store: isDbEnabled ? new PgTokenStore(getDb()) : undefined,
   });
   const http = new HlHttp(tokenManager);
   ctx = { client: new HighLevelClient(http, clientConfig), http, tokenManager };

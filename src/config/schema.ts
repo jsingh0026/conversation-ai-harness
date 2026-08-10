@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, vector } from 'drizzle-orm/pg-core';
+import { bigint, index, pgTable, text, timestamp, vector } from 'drizzle-orm/pg-core';
 
 /**
  * Drizzle schema — the typed source of truth for our two Postgres tables. The
@@ -13,6 +13,17 @@ export const processedMessages = pgTable('processed_messages', {
   conversationId: text('conversation_id'),
   status: text('status').notNull().default('processing'), // 'processing' | 'done'
   processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** HighLevel OAuth token — single row (`id = 'default'`). Postgres-backed so it
+ *  survives Fly deploys (the machine filesystem is ephemeral). */
+export const hlOauthToken = pgTable('hl_oauth_token', {
+  id: text('id').primaryKey(), // always 'default' (one connected location)
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token').notNull(),
+  expiresAt: bigint('expires_at', { mode: 'number' }).notNull(), // epoch ms
+  locationId: text('location_id'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 /** KB vector store (pgvector). Embedding dim matches the embed model (bge-small = 384). */

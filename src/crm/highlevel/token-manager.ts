@@ -36,11 +36,41 @@ export interface StoredToken {
   locationId?: string;
 }
 
+/** Where the OAuth token is persisted. File on local dev; Postgres on Fly (so it
+ *  survives deploys — the machine filesystem is ephemeral). */
+export interface TokenStore {
+  load(): Promise<StoredToken | undefined>;
+  save(token: StoredToken): Promise<void>;
+}
+
+/** Default store: a 0600 JSON file. Fine for local dev; ephemeral on Fly. */
+export class FileTokenStore implements TokenStore {
+  constructor(private readonly path: string = TOKEN_PATH) {}
+  async load(): Promise<StoredToken | undefined> {
+    try {
+      return JSON.parse(await readFile(this.path, 'utf8')) as StoredToken;
+    } catch {
+      return undefined;
+    }
+  }
+  async save(token: StoredToken): Promise<void> {
+    try {
+      // Restrictive perms — the refresh token is a long-lived secret.
+      await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+      await writeFile(this.path, JSON.stringify(token, null, 2), { mode: 0o600 });
+    } catch (err) {
+      logger.warn({ err }, 'failed to persist HighLevel token');
+    }
+  }
+}
+
 export interface TokenManagerConfig {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
   tokenPath?: string;
+  /** Override the persistence backend (defaults to a FileTokenStore). */
+  store?: TokenStore;
 }
 
 type FetchLike = typeof fetch;
@@ -59,7 +89,7 @@ interface TokenResponse {
  */
 export class TokenManager implements AccessTokenSource {
   private token: StoredToken | undefined;
-  private readonly tokenPath: string;
+  private readonly store: TokenStore;
   private refreshing: Promise<StoredToken> | undefined;
 
   constructor(
@@ -67,17 +97,13 @@ export class TokenManager implements AccessTokenSource {
     private readonly fetchImpl: FetchLike = fetch,
     private readonly now: () => number = Date.now,
   ) {
-    this.tokenPath = config.tokenPath ?? TOKEN_PATH;
+    this.store = config.store ?? new FileTokenStore(config.tokenPath);
   }
 
-  /** Load a persisted token from disk, if present. */
+  /** Load a persisted token from the store, if present. */
   async load(): Promise<StoredToken | undefined> {
-    try {
-      this.token = JSON.parse(await readFile(this.tokenPath, 'utf8')) as StoredToken;
-      return this.token;
-    } catch {
-      return undefined;
-    }
+    this.token = await this.store.load();
+    return this.token;
   }
 
   isAuthorized(): boolean {
@@ -135,18 +161,8 @@ export class TokenManager implements AccessTokenSource {
       expiresAt: this.now() + json.expires_in * 1000,
       locationId: json.locationId,
     };
-    await this.persist(token);
+    await this.store.save(token);
     this.token = token;
     return token;
-  }
-
-  private async persist(token: StoredToken): Promise<void> {
-    try {
-      // Restrictive perms — the refresh token is a long-lived secret.
-      await mkdir(dirname(this.tokenPath), { recursive: true, mode: 0o700 });
-      await writeFile(this.tokenPath, JSON.stringify(token, null, 2), { mode: 0o600 });
-    } catch (err) {
-      logger.warn({ err }, 'failed to persist HighLevel token');
-    }
   }
 }

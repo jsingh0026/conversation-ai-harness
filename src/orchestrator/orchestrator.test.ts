@@ -89,6 +89,38 @@ describe('Orchestrator', () => {
     expect(trace.reply).toBeNull();
   });
 
+  it('sends a graceful fallback (not silence) when a turn throws', async () => {
+    const crm = new MockCrmClient();
+    const provider = new StubProvider(() => {
+      throw new Error('LLM upstream 503');
+    });
+    const orch = new Orchestrator({
+      provider,
+      crm,
+      fallbackMessage: 'Sorry — a team member will follow up shortly.',
+    });
+
+    const trace = await orch.runTurn(msg('what are your fees?'));
+
+    expect(trace.error).toContain('503');
+    expect(crm.lastSent()?.body).toBe('Sorry — a team member will follow up shortly.');
+    expect(trace.reply).toBe('Sorry — a team member will follow up shortly.');
+  });
+
+  it('stays silent on a thrown turn when no fallback message is configured', async () => {
+    const crm = new MockCrmClient();
+    const provider = new StubProvider(() => {
+      throw new Error('boom');
+    });
+    const orch = new Orchestrator({ provider, crm, fallbackMessage: '' });
+
+    const trace = await orch.runTurn(msg('hi'));
+
+    expect(trace.error).toContain('boom');
+    expect(crm.lastSent()).toBeUndefined();
+    expect(trace.reply).toBeNull();
+  });
+
   it('feeds an error result back when a tool is unknown, then continues', async () => {
     const crm = new MockCrmClient();
     const provider = new StubProvider([
