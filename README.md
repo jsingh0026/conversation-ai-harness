@@ -43,7 +43,7 @@ EMBED_LOCAL=true               # on-device embeddings, no key
 CRM_MODE=mock" > .env
 
 pnpm ingest        # build the KB vector index (on-device embeddings)
-pnpm test          # 143 unit tests
+pnpm test          # 151 unit tests
 pnpm dev           # webhook server on :3000
 
 # In another shell — send a customer message through the full loop (mock CRM):
@@ -82,14 +82,16 @@ Inbound webhook → verify secret → normalize → idempotency dedupe → per-c
                                                               │
                               ┌────────────────────────────────┘
                               ▼  Orchestrator.runTurn  (bounded tool-use loop)
-       bot disabled? ──yes──▶ stay silent (already handed to a human)
+       bot disabled? ──yes──▶ send a holding reply ("a team member will follow up") — not silence
             │no
             ▼
        system prompt + history (last 40 msgs) + user msg ──▶ provider.generate(tools)
             ├─ no tool call   → reply directly (chit-chat)      ← RAG NOT triggered
             ├─ search_kb      → retrieve (threshold) → grounded answer / decline
             ├─ a skill        → execute, feed result back, loop
-            └─ handover       → stop bot, tag/reassign, send final message
+            └─ handover       → can we reach them (name + email/phone)?
+                                  no  → ask for the missing details first (HITL gate)
+                                  yes → stop bot, tag/reassign, send final message
             ▼
        send reply into CRM ──▶ emit Trace (Langfuse / JSON / CLI)
 ```
@@ -146,21 +148,37 @@ entry in `src/skills/index.ts`:
 - **Update Contact Field** — extracts name/email/budget/preferred-time the customer shares and writes
   them to the contact (standard vs. custom fields mapped for HighLevel).
 - **Human Handover** — on explicit ask / frustration / out-of-scope: sends a final message, stops the
-  bot, tags + reassigns the contact. Bot-off state is **durable** (rehydrates from the CRM tag).
+  bot, tags + reassigns the contact. Bot-off state is **durable** (rehydrates from the CRM tag). Two
+  UX touches: a **HITL gate** (won't hand off until we have a name + email/phone so a human can
+  actually follow up — it asks for what's missing first), and a handed-over conversation gets a brief
+  **holding reply** ("a team member will follow up") instead of going silent.
 - **Appointment Booking** — `get_available_slots` (handles "tomorrow afternoon") + `book_appointment`;
   handles **no-availability** and **slot-taken races**, and is **idempotent** (won't double-book).
 
 **4. Execution transparency.** Every turn emits a canonical `Trace`: assembled system prompt,
-provider/model, whether RAG fired (chunks + scores), each tool's inputs/outputs/CRM calls, tokens,
-and per-step latency. Fanned out to **self-hosted Langfuse**, **JSON files**, and a **CLI viewer**
-(`pnpm trace`). PII (emails/phones) is masked at these sinks; the LLM input keeps the real values.
+provider/model, whether RAG fired (which KB docs + `kb/…md` paths + similarity scores), each tool's
+inputs/outputs/CRM calls, tokens, per-step latency, and the decision. Fanned out to **self-hosted
+Langfuse**, **JSON files**, and a **CLI viewer** (`pnpm trace`). In Langfuse it's production-grade:
+turns grouped into **sessions** (per conversation) + **users** (per contact), **cost per turn**,
+failures flagged **`level:ERROR`**, traces **named by decision** (chart the routing distribution),
+and observations **step-numbered by role** — `1·llm:decide → 2·retrieval → 3·llm:answer`.
+
+**PII masking (highlight).** Emails and phones — *including the Unicode-dash / no-break-space formats
+LLMs emit* (`012‑8899`) — plus secret keys and auth headers are masked at the **observability sinks**:
+pino `redact.paths` for known keys + a **free-text `logMethod` hook** for anything interpolated into
+messages, and the **trace exporter scrubs** input/reply/system/tool-I/O before export. The **LLM
+input is left intact** on purpose (the skills need the real name/email/budget). RE2-safe patterns with
+a length guard keep it ReDoS-safe on the hot path. See `src/util/redact.ts`.
 
 ---
 
 ## Latency & Evals (the quality bars)
 
 **Latency** — fast webhook ack + async per-conversation processing. Target **p50 ≤ 3s / p95 ≤ 6s**
-webhook-to-send for non-RAG turns; a deployed knowledge turn measured **2.5s** end-to-end.
+webhook-to-send for **non-RAG** turns; simple turns land **~2.5s** on Groq (within target). RAG and
+skill turns add a model hop (two `generate` calls) so they run higher — expected, and the target is
+scoped to non-RAG turns; reasoning models (e.g. deepseek) roughly double these. Per-turn `latencyMs`
+is on every trace.
 
 **Evals — one command, negatives included, per provider:**
 
@@ -218,7 +236,10 @@ All behind the existing seams; the DB-less/no-Langfuse default still runs unchan
 - **Crash-safe, exactly-once** — idempotency uses a `processing → done` **lease** so a crash mid-turn
   is reclaimed, not dropped; `book_appointment` is idempotent so a retry can't double-book.
 - **Durable handover** — bot-off rehydrates from the CRM `bot-handover` tag, surviving restarts.
-- **PII masking** at logs + trace exports (pino `redact.paths` + a free-text email/phone hook).
+- **PII masking** at logs + trace exports — pino `redact.paths` + a free-text email/phone hook
+  (incl. Unicode-dash formats) + trace scrubbing; LLM input left intact. See `src/util/redact.ts`.
+- **Observability** — Langfuse sessions/users, per-turn cost, `level:ERROR` on failures,
+  decision-named + step-numbered traces with RAG source docs/paths/scores.
 - **Deploy** — `Dockerfile` + `fly.toml` (warm machine, health check, baked KB + embed model);
   self-hosted **Langfuse v2** in `deploy/langfuse/`.
 
@@ -258,7 +279,7 @@ a cloud embedder (`EMBED_PROVIDER`/`EMBED_MODEL`). For the real sandbox + Fly de
 | `pnpm eval [provider...] [suite...]` | One-command eval suite |
 | `pnpm trace [<id>\|latest]` | Terminal trace viewer |
 | `pnpm providers:smoke [provider]` | Check a provider returns a tool call |
-| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 143 tests · types · lint |
+| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 151 tests · types · lint |
 | `pnpm db:migrate` · `pnpm ingest:pg` | Apply schema / load KB into Postgres (when `DATABASE_URL` set) |
 
 ## Repo layout
@@ -279,7 +300,8 @@ evals/           harness, runners, scoring, cases/*.json, report
 kb/              14 markdown docs (Demo Realty)
 db/              schema.sql (core) + schema-pgvector.sql (opt-in)
 deploy/langfuse/ self-hosted Langfuse v2 Fly config
-docs/            ARCHITECTURE, SETUP, DEMO, PRODUCTION_HARDENING, EVAL_RESULTS, ASSIGNMENT
+docs/            ARCHITECTURE, SETUP, DEMO, PRODUCTION_HARDENING, EVAL_RESULTS, ASSIGNMENT,
+                 QA_TEST_QUESTIONS, CHAT_TEST_CASES
 ```
 
 ## Team-of-One ownership
@@ -291,7 +313,7 @@ docs/            ARCHITECTURE, SETUP, DEMO, PRODUCTION_HARDENING, EVAL_RESULTS, 
   trace surface is designed around one question: *why did the agent say that?*
 - **Engineering** — a bounded tool-use loop as the single decision mechanism; the Vercel AI SDK for
   normalized multi-provider calls; a swappable vector index (file → pgvector); mock-first, offline-runnable.
-- **QA** — 143 unit tests + an independent adversarial review sweep after every phase (findings
+- **QA** — 151 unit tests + an independent adversarial review sweep after every phase (findings
   applied before moving on), plus the eval suite as behavioral regression coverage.
 
 ## Functional vs. mocked
