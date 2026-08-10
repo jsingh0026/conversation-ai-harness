@@ -1,10 +1,10 @@
 # Viewings and Appointments
 
-Seeing a home in person is where the search comes to life. Here is how viewings work at Lumina Realty.
+Seeing a home in person is where the search comes to life. Here is how viewings work at Demo Realty.
 
 ## How to Book
 
-Viewings are booked through a Lumina agent. You can start by calling us at (555) 012-8899 or emailing hello@luminarealty.example, and we will connect you with an agent who can schedule your tours.
+Viewings are booked through a Demo Realty agent. You can start by calling us at (555) 012-8899 or emailing hello@demorealty.example, and we will connect you with an agent who can schedule your tours.
 
 ## What to Expect
 

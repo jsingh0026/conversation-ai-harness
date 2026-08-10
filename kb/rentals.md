@@ -1,10 +1,10 @@
 # Rentals
 
-Lumina Realty serves both sides of the rental market in Marisol Bay county: renters looking for a home, and landlords who need their property managed.
+Demo Realty serves both sides of the rental market in Marisol Bay county: renters looking for a home, and landlords who need their property managed.
 
 ## For Renters
 
-Helping renters find a home is free to the renter. Your Lumina agent learns what you are looking for, whether that is a modern condo in Dockside or a cozy place in Old Town, and helps you find and tour available rentals.
+Helping renters find a home is free to the renter. Your Demo Realty agent learns what you are looking for, whether that is a modern condo in Dockside or a cozy place in Old Town, and helps you find and tour available rentals.
 
 ### Application Basics
 
@@ -32,4 +32,4 @@ Rental viewings follow our standard practice: they are booked through an agent, 
 
 ## Scope
 
-We handle residential rentals in Marisol Bay county only. We do not manage or lease commercial property. To get started, call (555) 012-8899 or email hello@luminarealty.example.
+We handle residential rentals in Marisol Bay county only. We do not manage or lease commercial property. To get started, call (555) 012-8899 or email hello@demorealty.example.

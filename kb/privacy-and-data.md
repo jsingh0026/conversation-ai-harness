@@ -1,6 +1,6 @@
 # Privacy and Your Data
 
-Your trust matters to us. This page explains what information Lumina Realty collects, why we collect it, and the choices you have.
+Your trust matters to us. This page explains what information Demo Realty collects, why we collect it, and the choices you have.
 
 ## What We Store
 
@@ -12,14 +12,14 @@ We keep your information for one reason: to serve you well. Having your details 
 
 ## We Do Not Sell Your Data
 
-Lumina Realty does not sell customer data. Your information is used to serve you, not to be traded or sold to third parties.
+Demo Realty does not sell customer data. Your information is used to serve you, not to be traded or sold to third parties.
 
 ## Updating or Removing Your Information
 
 You are in control of your information. If you would like to review, update, or remove your details from our CRM, simply reach out:
 
 - Phone: (555) 012-8899
-- Email: hello@luminarealty.example
+- Email: hello@demorealty.example
 
 We will promptly help you correct or delete your information on request.
 

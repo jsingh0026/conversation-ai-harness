@@ -1,10 +1,10 @@
 [
-  { "id": "gr-01", "message": "What's the total commission to sell my home through Lumina?", "expect": "grounded", "expectedFacts": ["5%"], "note": "Seller commission is 5% total." },
+  { "id": "gr-01", "message": "What's the total commission to sell my home through Demo Realty?", "expect": "grounded", "expectedFacts": ["5%"], "note": "Seller commission is 5% total." },
   { "id": "gr-02", "message": "How much is the listing side versus the buyer-agent side of the commission?", "expect": "grounded", "expectedFacts": ["2.5%"], "note": "Split is 2.5% / 2.5%." },
   { "id": "gr-03", "message": "What do you charge to manage my rental?", "expect": "grounded", "expectedFacts": ["8%"], "note": "Property management fee is 8% of monthly rent." },
   { "id": "gr-04", "message": "What time do you open and close on weekdays?", "expect": "grounded", "expectedFacts": ["9am|9 am|9:00", "6pm|6 pm|6:00"], "note": "Weekday hours 9am to 6pm." },
   { "id": "gr-05", "message": "Are you open on Sunday?", "expect": "grounded", "expectedFacts": ["closed"], "note": "Closed Sunday." },
-  { "id": "gr-06", "message": "What's your first-time buyer program called?", "expect": "grounded", "expectedFacts": ["first key"], "note": "Lumina First Key program." },
+  { "id": "gr-06", "message": "What's your first-time buyer program called?", "expect": "grounded", "expectedFacts": ["first key"], "note": "Demo First Key program." },
   { "id": "gr-07", "message": "How big is the closing-cost credit for first-time buyers?", "expect": "grounded", "expectedFacts": ["2,500|2500"], "note": "Up to $2,500 credit." },
   { "id": "gr-08", "message": "Which banks do you partner with for pre-approval?", "expect": "grounded", "expectedFacts": ["harbor trust", "marisol credit"], "note": "Harbor Trust Bank and Marisol Credit Union." },
   { "id": "gr-09", "message": "Which of your neighborhoods is on the waterfront?", "expect": "grounded", "expectedFacts": ["the cove"], "note": "The Cove is waterfront." },
@@ -16,11 +16,11 @@
   { "id": "gr-15", "message": "What's the average home price in The Cove right now?", "expect": "decline", "note": "Live market pricing not in KB." },
   { "id": "gr-16", "message": "Do you have any 3-bed listings under 400k available?", "expect": "decline", "note": "Specific inventory not in KB." },
   { "id": "gr-17", "message": "Can you sell my office building downtown?", "expect": "decline", "note": "Commercial real estate is out of scope." },
-  { "id": "gr-18", "message": "What will mortgage rates be next year?", "expect": "decline", "note": "Rate forecasting not in KB; Lumina is not a lender." },
+  { "id": "gr-18", "message": "What will mortgage rates be next year?", "expect": "decline", "note": "Rate forecasting not in KB; Demo Realty is not a lender." },
   { "id": "gr-19", "message": "Do you operate in Denver?", "expect": "decline", "note": "Outside Marisol Bay county, out of scope." },
-  { "id": "gr-20", "message": "Can Lumina give me a mortgage directly?", "expect": "decline", "note": "Lumina is not a lender." },
+  { "id": "gr-20", "message": "Can Demo Realty give me a mortgage directly?", "expect": "decline", "note": "Demo Realty is not a lender." },
   { "id": "gr-21", "message": "What are the property tax rates in Maple Heights?", "expect": "decline", "note": "Tax rates not in KB." },
   { "id": "gr-22", "message": "Can you review this purchase contract and tell me if it's legally sound?", "expect": "decline", "note": "Legal advice is out of scope." },
-  { "id": "gr-23", "message": "How many homes did Lumina sell last quarter?", "expect": "decline", "note": "Sales stats not in KB." },
+  { "id": "gr-23", "message": "How many homes did Demo Realty sell last quarter?", "expect": "decline", "note": "Sales stats not in KB." },
   { "id": "gr-24", "message": "What school district is Vista Ridge in?", "expect": "decline", "note": "School district data not in KB." }
 ]

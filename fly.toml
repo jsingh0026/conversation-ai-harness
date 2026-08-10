@@ -1,0 +1,51 @@
+# Fly.io deployment for the Conversation AI Harness.
+#   fly launch --no-deploy        # create the app (or `fly apps create`)
+#   fly postgres create           # provision Postgres, then:
+#   fly postgres attach <pg-app>  # sets DATABASE_URL secret automatically
+#   fly secrets set LLM_PROVIDER=openai OPENAI_API_KEY=... OPENAI_BASE_URL=... \
+#                   OPENAI_MODEL=openai/gpt-oss-120b CRM_MODE=highlevel \
+#                   HL_PRIVATE_TOKEN=... HL_LOCATION_ID=... HL_CALENDAR_ID=... \
+#                   HL_CALENDAR_USER_ID=... HL_HANDOVER_USER_ID=... \
+#                   HL_FIELD_BUDGET_ID=... HL_FIELD_PREFERRED_TIME_ID=...
+#   fly deploy                    # builds Dockerfile, runs release_command, ships
+app = "conversation-ai-harness"
+primary_region = "sin" # pick one near your users / HighLevel; e.g. sin, bom, iad
+
+[build]
+
+# Non-secret runtime config. Secrets (API keys, DATABASE_URL) come from `fly secrets`.
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+  EMBED_LOCAL = "true"
+  EMBED_LOCAL_MODEL = "Xenova/bge-small-en-v1.5"
+  CRM_MODE = "highlevel"
+
+# Runs on each deploy before the new version takes traffic. Guarded so a DB-less
+# deploy still works: with Postgres attached it applies the core schema (and, when
+# PGVECTOR=true, the pgvector KB schema + loads the baked KB index). migrate/ingest
+# self-skip the pgvector parts unless PGVECTOR is set.
+[deploy]
+  release_command = "sh -c 'if [ -n \"$DATABASE_URL\" ]; then node dist/config/migrate.js && node dist/rag/ingest-pg.js; fi'"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep one machine always warm: preserves in-memory state (history cache,
+  # per-conversation queue) and avoids a cold-start blowing the p50 <= 3s target.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+# The local embedding model + ONNX runtime need headroom; 512MB risks OOM.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  cpus = 1

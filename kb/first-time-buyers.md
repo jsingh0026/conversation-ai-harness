@@ -1,10 +1,10 @@
-# First-Time Buyers: Lumina First Key
+# First-Time Buyers: Demo First Key
 
-Buying your first home is a big milestone, and it can feel overwhelming. Our "Lumina First Key" program is built to make the experience welcoming, clear, and rewarding.
+Buying your first home is a big milestone, and it can feel overwhelming. Our "Demo First Key" program is built to make the experience welcoming, clear, and rewarding.
 
-## What Is Lumina First Key?
+## What Is Demo First Key?
 
-Lumina First Key is our dedicated program for first-time buyers. It combines two things:
+Demo First Key is our dedicated program for first-time buyers. It combines two things:
 
 - Dedicated guidance from an agent who specializes in helping first-time buyers understand each step.
 - A closing-cost credit of up to $2,500 for buyers who qualify.
@@ -15,11 +15,11 @@ Qualifying first-time buyers can receive a closing-cost credit of up to $2,500. 
 
 ## Eligibility
 
-To take part, you should be a first-time buyer purchasing a residential home in Marisol Bay county. Because financing plays a role, we recommend getting mortgage pre-approval early. Lumina is not a lender, but we partner with Harbor Trust Bank and Marisol Credit Union who can help you get pre-approved.
+To take part, you should be a first-time buyer purchasing a residential home in Marisol Bay county. Because financing plays a role, we recommend getting mortgage pre-approval early. Demo Realty is not a lender, but we partner with Harbor Trust Bank and Marisol Credit Union who can help you get pre-approved.
 
 ## How It Works
 
-1. Let your Lumina agent know you are a first-time buyer.
+1. Let your Demo Realty agent know you are a first-time buyer.
 2. Get pre-approved with a lender so you know your budget.
 3. Search and tour homes with your dedicated agent (buyer representation is free).
 4. Make an offer and go under contract.
@@ -27,4 +27,4 @@ To take part, you should be a first-time buyer purchasing a residential home in 
 
 ## Getting Started
 
-Ready to find your first key? Call us at (555) 012-8899 or email hello@luminarealty.example, and we will match you with an agent.
+Ready to find your first key? Call us at (555) 012-8899 or email hello@demorealty.example, and we will match you with an agent.

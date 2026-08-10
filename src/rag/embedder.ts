@@ -49,6 +49,9 @@ class LocalEmbedder implements Embedder {
       this.pipe = (async () => {
         const { pipeline, env: tfEnv } = await import('@xenova/transformers');
         tfEnv.allowLocalModels = false; // pull from the HF hub, then cache
+        // Pin the cache dir so a Docker build can bake the model into the image
+        // (set TRANSFORMERS_CACHE at build + run time); unset = library default.
+        if (process.env.TRANSFORMERS_CACHE) tfEnv.cacheDir = process.env.TRANSFORMERS_CACHE;
         const t0 = Date.now();
         const p = (await pipeline('feature-extraction', this.model)) as FeatureExtractionPipelineLike;
         logger.info({ model: this.model, ms: Date.now() - t0 }, 'local embedding model loaded');

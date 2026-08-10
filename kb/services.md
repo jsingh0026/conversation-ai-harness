@@ -1,6 +1,6 @@
 # Our Services
 
-Lumina Realty offers a full range of residential real-estate services across Marisol Bay and its surrounding county. Everything we do centers on homes and the people who live in them.
+Demo Realty offers a full range of residential real-estate services across Marisol Bay and its surrounding county. Everything we do centers on homes and the people who live in them.
 
 ## Buying
 
@@ -20,8 +20,8 @@ Moving to Marisol Bay from elsewhere? Our agents offer relocation guidance, incl
 
 ## First-Time Buyers
 
-Through our "Lumina First Key" program, first-time buyers receive dedicated guidance plus a closing-cost credit of up to $2,500 for those who qualify.
+Through our "Demo First Key" program, first-time buyers receive dedicated guidance plus a closing-cost credit of up to $2,500 for those who qualify.
 
 ## What We Do Not Offer
 
-Lumina Realty is residential only. We do not handle commercial real estate, and we are not a lender, so we do not provide mortgages or loans directly. We also serve only Marisol Bay county. For financing, we partner with Harbor Trust Bank and Marisol Credit Union.
+Demo Realty is residential only. We do not handle commercial real estate, and we are not a lender, so we do not provide mortgages or loans directly. We also serve only Marisol Bay county. For financing, we partner with Harbor Trust Bank and Marisol Credit Union.

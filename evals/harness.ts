@@ -58,7 +58,7 @@ export async function runEvalTurn(
     createSearchKbTool(retriever),
     ...createSkills({ appointment: { calendarId: CAL } }),
   ];
-  const orch = new Orchestrator({ provider, crm, tools, promptVars: { businessName: 'Lumina Realty' } });
+  const orch = new Orchestrator({ provider, crm, tools, promptVars: { businessName: 'Demo Realty' } });
 
   const id = `eval-${++seq}`;
   const t0 = Date.now();

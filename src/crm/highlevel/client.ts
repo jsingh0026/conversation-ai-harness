@@ -24,10 +24,22 @@ export interface HighLevelClientConfig {
   /** User the booked appointment is assigned to (HighLevel requires this). */
   assignedUserId?: string;
   slotDurationMin?: number;
+  /** Contact tag the handover skill writes; used to rehydrate bot-off state. */
+  handoverTag?: string;
 }
 
 /** Standard contact fields go top-level; the rest map to custom-field IDs. */
 const STANDARD_FIELDS = new Set(['name', 'email', 'phone']);
+
+/** Loose shape of a HighLevel appointment event (fields vary by calendar). */
+interface HlAppointmentEvent {
+  id?: string;
+  calendarId?: string;
+  startTime?: string;
+  endTime?: string;
+  title?: string;
+  appointmentStatus?: string;
+}
 
 /**
  * Real HighLevel CRM client. Same `CrmClient` interface as the mock, so the
@@ -132,8 +144,54 @@ export class HighLevelClient implements CrmClient {
     }
   }
 
+  async getContactAppointments(contactId: string): Promise<Appointment[]> {
+    // Fail-open: if the lookup errors or the shape differs, return none so
+    // booking still proceeds. The idempotency lease is the primary guard; this
+    // is a best-effort second layer against duplicate bookings.
+    try {
+      const res = await this.http.get<{ events?: HlAppointmentEvent[] }>(
+        `/contacts/${contactId}/appointments`,
+      );
+      return (res.events ?? [])
+        .filter((e) => e.startTime)
+        .map((e) => ({
+          id: e.id ?? '',
+          calendarId: e.calendarId ?? '',
+          contactId,
+          startTime: e.startTime!,
+          endTime: e.endTime ?? e.startTime!,
+          title: e.title,
+          status: /cancel/i.test(e.appointmentStatus ?? '') ? 'cancelled' : 'booked',
+        }));
+    } catch (err) {
+      logger.warn({ err, contactId }, 'getContactAppointments failed; proceeding without dedup');
+      return [];
+    }
+  }
+
   async isBotEnabled(conversationId: string): Promise<boolean> {
-    return this.botState.get(conversationId) ?? true;
+    // Fast path: the in-memory flag is authoritative once we've seen this
+    // conversation in this process.
+    const known = this.botState.get(conversationId);
+    if (known !== undefined) return known;
+
+    // Cache miss — either a brand-new conversation or the first turn after a
+    // restart. The durable handover marker is a contact tag, so rehydrate from
+    // it. In the live flow the workflow sends conversationId === contact.id, so
+    // we can read the contact directly. This costs one lookup per conversation
+    // (not per turn), and a transient failure defaults to enabled rather than
+    // silently muting the bot.
+    let enabled = true;
+    if (this.config.handoverTag) {
+      try {
+        const contact = await this.getContact(conversationId);
+        if (contact.tags.includes(this.config.handoverTag)) enabled = false;
+      } catch (err) {
+        logger.warn({ err, conversationId }, 'handover-tag rehydrate failed; assuming bot enabled');
+      }
+    }
+    this.botState.set(conversationId, enabled);
+    return enabled;
   }
 
   async setBotEnabled(conversationId: string, enabled: boolean): Promise<void> {

@@ -121,6 +121,22 @@ function createBookAppointmentSkill(config: AppointmentConfig): AgentTool {
     run: async (args, ctx) => {
       if (!calendarId) return noCalendar();
       const { startTime, endTime, title } = BookParams.parse(args);
+
+      // Idempotent booking: if this contact already has an appointment at this
+      // exact slot, return it instead of creating a duplicate. Guards against a
+      // re-driven turn (lease reclaim) or the model calling book twice.
+      const target = Date.parse(startTime);
+      const existing = (await ctx.crm.getContactAppointments(ctx.contactId)).find(
+        (a) => Date.parse(a.startTime) === target,
+      );
+      if (existing) {
+        return {
+          booked: true,
+          alreadyBooked: true,
+          appointment: { id: existing.id, startTime: existing.startTime, endTime: existing.endTime },
+        };
+      }
+
       try {
         const appt = await ctx.crm.createAppointment({
           calendarId,

@@ -29,6 +29,7 @@ function client(http: HlHttp): HighLevelClient {
     locationId: 'loc1',
     fieldMap: { budget: 'fld_budget' },
     assignedUserId: 'user-7',
+    handoverTag: 'bot-handover',
   });
 }
 
@@ -93,6 +94,43 @@ describe('HighLevelClient', () => {
         endTime: '2026-08-09T15:30:00.000Z',
       }),
     ).rejects.toBeInstanceOf(SlotTakenError);
+  });
+
+  it('rehydrates bot-off state from the handover tag on a cold cache (survives restart)', async () => {
+    let calls = 0;
+    const routes: FakeRoute[] = [
+      {
+        method: 'GET',
+        match: /contacts\//,
+        json: { contact: { id: 'ct1', tags: ['bot-handover'] } },
+        onCall: () => {
+          calls++;
+        },
+      },
+    ];
+    const http = await authedHttp(routes);
+    const c = client(http);
+    // First check: no in-memory flag → reads the tag → disabled.
+    expect(await c.isBotEnabled('ct1')).toBe(false);
+    // Second check: served from cache, no extra contact lookup.
+    expect(await c.isBotEnabled('ct1')).toBe(false);
+    expect(calls).toBe(1);
+  });
+
+  it('defaults a fresh conversation (no handover tag) to enabled', async () => {
+    const routes: FakeRoute[] = [
+      { method: 'GET', match: /contacts\//, json: { contact: { id: 'ct2', tags: [] } } },
+    ];
+    const http = await authedHttp(routes);
+    expect(await client(http).isBotEnabled('ct2')).toBe(true);
+  });
+
+  it('assumes bot enabled if the handover-tag lookup fails (no silent mute)', async () => {
+    const routes: FakeRoute[] = [
+      { method: 'GET', match: /contacts\//, status: 500, text: 'boom' },
+    ];
+    const http = await authedHttp(routes);
+    expect(await client(http).isBotEnabled('ct3')).toBe(true);
   });
 
   it('preserves the slot timezone offset from the calendar endpoint', async () => {

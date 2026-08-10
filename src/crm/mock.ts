@@ -35,7 +35,9 @@ export class MockCrmClient implements CrmClient {
 
   constructor(seed?: { contacts?: Contact[]; slots?: Record<string, CalendarSlot[]> }) {
     for (const c of seed?.contacts ?? []) this.contacts.set(c.id, c);
-    for (const [calId, slots] of Object.entries(seed?.slots ?? {})) this.slots.set(calId, slots);
+    // Copy the seeded slots — booking splices this array, and we must not mutate
+    // the caller's fixture (shared across tests).
+    for (const [calId, slots] of Object.entries(seed?.slots ?? {})) this.slots.set(calId, [...slots]);
   }
 
   /** Test helper: ensure a contact exists, creating an empty one if needed. */
@@ -120,6 +122,12 @@ export class MockCrmClient implements CrmClient {
     };
     this.appointments.push(appt);
     return appt;
+  }
+
+  async getContactAppointments(contactId: string): Promise<Appointment[]> {
+    return structuredClone(
+      this.appointments.filter((a) => a.contactId === contactId && a.status === 'booked'),
+    );
   }
 
   async isBotEnabled(conversationId: string): Promise<boolean> {

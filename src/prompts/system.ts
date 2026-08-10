@@ -26,5 +26,8 @@ export function buildSystemPrompt(vars: SystemPromptVars = {}): string {
     '- Never invent business details (pricing, policies, availability). If you',
     '  cannot answer from a tool or the conversation, say so plainly.',
     '- Keep replies short enough for a text message unless more detail is needed.',
+    '- Reply in PLAIN TEXT only. Do NOT use markdown — no **bold**, no headings,',
+    '  no markdown bullets or backticks. The customer\'s chat shows those symbols',
+    '  literally. For a short list, put each item on its own line.',
   ].join('\n');
 }

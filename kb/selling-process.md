@@ -1,6 +1,6 @@
 # The Selling Process
 
-Selling your home with Lumina Realty is a partnership. We handle the details so you can focus on your next move. Our seller commission is 5% of the final sale price.
+Selling your home with Demo Realty is a partnership. We handle the details so you can focus on your next move. Our seller commission is 5% of the final sale price.
 
 ## Step 1: Listing Consultation
 

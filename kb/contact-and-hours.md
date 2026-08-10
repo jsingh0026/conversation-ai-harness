@@ -1,6 +1,6 @@
 # Contact and Hours
 
-We would love to hear from you. Here is everything you need to reach Lumina Realty.
+We would love to hear from you. Here is everything you need to reach Demo Realty.
 
 ## Office Address
 
@@ -12,7 +12,7 @@ Our office sits in the heart of Marisol Bay, close to the neighborhoods we serve
 ## Phone and Email
 
 - Phone: (555) 012-8899
-- Email: hello@luminarealty.example
+- Email: hello@demorealty.example
 
 Whether you are buying, selling, renting, or just have a question, either method reaches our team.
 
@@ -34,4 +34,4 @@ Viewings are booked through an agent. A standard viewing is a 30-minute slot, an
 
 ## Service Area
 
-Lumina Realty serves residential clients in Marisol Bay and its surrounding county. We do not operate outside Marisol Bay county, and we do not handle commercial real estate or lend money directly.
+Demo Realty serves residential clients in Marisol Bay and its surrounding county. We do not operate outside Marisol Bay county, and we do not handle commercial real estate or lend money directly.

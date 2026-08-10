@@ -55,6 +55,8 @@ export function getHighLevelContext(): HlContext {
     fieldMap: { budget: env.HL_FIELD_BUDGET_ID, preferredTime: env.HL_FIELD_PREFERRED_TIME_ID },
     // Appointments need an assignee; fall back to the handover user if set.
     assignedUserId: env.HL_CALENDAR_USER_ID ?? env.HL_HANDOVER_USER_ID,
+    // Lets isBotEnabled rehydrate handover state from the durable contact tag.
+    handoverTag: env.HL_HANDOVER_TAG,
   };
 
   if (env.HL_PRIVATE_TOKEN) {

@@ -61,3 +61,50 @@ number** (SMS) **or** configure **email sending**. Pick when we wire the send pa
 ## 6. `.env`
 Copy `.env.example` → `.env` and fill in the values above. API base + version header are set in code
 (`https://services.leadconnectorhq.com`).
+
+---
+
+## 7. Deploy to Fly (Postgres + pgvector)
+
+The harness runs DB-less locally; on Fly it uses Postgres for the KB (pgvector) and webhook
+idempotency. `Dockerfile` bakes the KB index + embed model; `fly.toml` keeps one warm machine.
+
+```sh
+flyctl auth login                     # interactive
+fly launch --no-deploy                # create the app from fly.toml
+fly postgres create                   # provision Postgres
+fly postgres attach <pg-app>          # sets DATABASE_URL secret
+fly secrets set \
+  LLM_PROVIDER=openai OPENAI_API_KEY=… OPENAI_BASE_URL=https://api.groq.com/openai/v1 \
+  OPENAI_MODEL=openai/gpt-oss-120b HL_PRIVATE_TOKEN=… HL_LOCATION_ID=… HL_CALENDAR_ID=… \
+  HL_CALENDAR_USER_ID=… HL_HANDOVER_USER_ID=… HL_FIELD_BUDGET_ID=… HL_FIELD_PREFERRED_TIME_ID=… \
+  HL_WEBHOOK_SECRET=$(openssl rand -hex 24)     # then send this secret as the webhook's x-webhook-secret header
+fly deploy                            # builds, runs migrate + ingest:pg, ships
+```
+
+A stable `https://<app>.fly.dev` URL replaces ngrok — point the HighLevel workflow webhook at
+`…/webhook` once (add header `x-webhook-secret: <the secret above>`).
+
+## 8. Self-hosted Langfuse (tracing)
+
+Light **v2** footprint: one container + a database on the *same* Postgres cluster. Config lives in
+`deploy/langfuse/fly.toml` (full commands are in its header comment). Summary:
+
+```sh
+fly apps create conversation-ai-langfuse
+fly postgres attach <pg-app> -a conversation-ai-langfuse          # its own DB + DATABASE_URL
+fly secrets set -a conversation-ai-langfuse \
+  NEXTAUTH_URL=https://conversation-ai-langfuse.fly.dev \
+  NEXTAUTH_SECRET=$(openssl rand -hex 32) SALT=$(openssl rand -hex 16) \
+  ENCRYPTION_KEY=$(openssl rand -hex 32)
+fly deploy --config deploy/langfuse/fly.toml -a conversation-ai-langfuse
+```
+
+Then create a project in the Langfuse UI, copy the keys, and connect the harness (no code change —
+the exporter auto-enables):
+
+```sh
+fly secrets set -a conversation-ai-harness \
+  LANGFUSE_PUBLIC_KEY=pk-lf-… LANGFUSE_SECRET_KEY=sk-lf-… \
+  LANGFUSE_BASEURL=https://conversation-ai-langfuse.fly.dev
+```

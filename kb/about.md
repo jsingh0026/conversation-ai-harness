@@ -1,6 +1,6 @@
-# About Lumina Realty
+# About Demo Realty
 
-Lumina Realty is a boutique residential real-estate brokerage serving the city of Marisol Bay and its surrounding county. We were founded in 2016 with a simple belief: that buying, selling, or renting a home should feel guided, transparent, and genuinely personal.
+Demo Realty is a boutique residential real-estate brokerage serving the city of Marisol Bay and its surrounding county. We were founded in 2016 with a simple belief: that buying, selling, or renting a home should feel guided, transparent, and genuinely personal.
 
 ## Our Mission
 
@@ -8,7 +8,7 @@ We help people find their place in Marisol Bay. Whether that means a waterfront 
 
 ## Who We Serve
 
-Lumina Realty is residential only. We work with buyers, sellers, renters, and landlords who are moving within, into, or out of Marisol Bay county. Because we are a boutique firm, our agents carry fewer clients at a time, which means more attention for each person we serve.
+Demo Realty is residential only. We work with buyers, sellers, renters, and landlords who are moving within, into, or out of Marisol Bay county. Because we are a boutique firm, our agents carry fewer clients at a time, which means more attention for each person we serve.
 
 ## Our Service Area
 
@@ -16,8 +16,8 @@ We focus exclusively on Marisol Bay and its surrounding county. This local focus
 
 ## What We Are Not
 
-To keep our promise of doing one thing well, we stay in our lane. Lumina Realty does not handle commercial real estate, and we are not a lender, so we do not provide mortgages or loans directly. When financing is needed, we connect clients with trusted local partners.
+To keep our promise of doing one thing well, we stay in our lane. Demo Realty does not handle commercial real estate, and we are not a lender, so we do not provide mortgages or loans directly. When financing is needed, we connect clients with trusted local partners.
 
 ## Getting in Touch
 
-Our office is located at 214 Harbor Street, Marisol Bay. You can reach us by phone at (555) 012-8899 or by email at hello@luminarealty.example. We would be glad to introduce you to an agent who fits your needs.
+Our office is located at 214 Harbor Street, Marisol Bay. You can reach us by phone at (555) 012-8899 or by email at hello@demorealty.example. We would be glad to introduce you to an agent who fits your needs.

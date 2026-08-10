@@ -1,4 +1,5 @@
 import { env } from './config/env.js';
+import { closePool } from './config/db.js';
 import { logger } from './util/logger.js';
 import { buildApp } from './server/app.js';
 import { shutdownTracing } from './trace/emit.js';
@@ -22,6 +23,7 @@ async function main(): Promise<void> {
       void app
         .close()
         .then(() => shutdownTracing())
+        .then(() => closePool())
         .then(() => process.exit(0));
     });
   }

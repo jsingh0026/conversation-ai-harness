@@ -64,6 +64,23 @@ describe('appointment skills', () => {
     expect(crm.listAppointments()).toHaveLength(1);
   });
 
+  it('is idempotent: re-booking the same slot returns the existing appointment', async () => {
+    const crm = new MockCrmClient({ slots: { [CAL]: slots } });
+    const { book, ctx } = skills(crm);
+    const first = (await book.run({ startTime: slots[0]!.startTime }, ctx)) as {
+      appointment: { id: string };
+    };
+    const second = (await book.run({ startTime: slots[0]!.startTime }, ctx)) as {
+      booked: boolean;
+      alreadyBooked?: boolean;
+      appointment: { id: string };
+    };
+    expect(second.booked).toBe(true);
+    expect(second.alreadyBooked).toBe(true);
+    expect(second.appointment.id).toBe(first.appointment.id);
+    expect(crm.listAppointments()).toHaveLength(1); // no duplicate
+  });
+
   it('handles the slot-taken race gracefully', async () => {
     const crm = new MockCrmClient({ slots: { [CAL]: [] } }); // slot already gone
     const { book, ctx } = skills(crm);

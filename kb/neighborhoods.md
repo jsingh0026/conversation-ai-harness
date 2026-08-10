@@ -1,6 +1,6 @@
 # Marisol Bay Neighborhoods
 
-Marisol Bay is a city of distinct communities, each with its own character. Lumina Realty serves all five of these neighborhoods and knows them well. Here is a short profile of each.
+Marisol Bay is a city of distinct communities, each with its own character. Demo Realty serves all five of these neighborhoods and knows them well. Here is a short profile of each.
 
 ## The Cove
 
@@ -24,4 +24,4 @@ Vista Ridge is the luxury hillside neighborhood, offering elevated homes with sw
 
 ## Finding Your Fit
 
-Not sure which neighborhood is right for you? Your Lumina agent can walk you through the trade-offs and arrange viewings across any of these areas. We serve residential clients throughout Marisol Bay county only.
+Not sure which neighborhood is right for you? Your Demo Realty agent can walk you through the trade-offs and arrange viewings across any of these areas. We serve residential clients throughout Marisol Bay county only.

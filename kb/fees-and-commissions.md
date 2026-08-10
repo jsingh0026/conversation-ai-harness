@@ -1,27 +1,27 @@
 # Fees and Commissions
 
-Lumina Realty believes in transparent, straightforward pricing. Here is exactly what our services cost.
+Demo Realty believes in transparent, straightforward pricing. Here is exactly what our services cost.
 
 ## Seller Commission
 
-When you sell your home with Lumina Realty, the total commission is 5% of the sale price. This is split into two equal halves:
+When you sell your home with Demo Realty, the total commission is 5% of the sale price. This is split into two equal halves:
 
-- 2.5% to the listing side (Lumina, representing you the seller)
+- 2.5% to the listing side (Demo Realty, representing you the seller)
 - 2.5% to the buyer's agent side
 
 This commission covers your comparative market analysis, staging advice, professional marketing, showing coordination, offer negotiation, and closing support.
 
 ## Buyers Pay Nothing
 
-Buyer representation is free to buyers. Because the seller's side covers agent compensation, you can work with a dedicated Lumina buyer's agent at no cost to you. This includes your home search, tours, offer strategy, negotiation, and closing guidance.
+Buyer representation is free to buyers. Because the seller's side covers agent compensation, you can work with a dedicated Demo Realty buyer's agent at no cost to you. This includes your home search, tours, offer strategy, negotiation, and closing guidance.
 
 ## Rental Property Management
 
-For landlords, our property management fee is 8% of the monthly rent. This covers tenant placement, coordination, and ongoing management support. Renters looking for a home pay nothing to Lumina; helping renters find a place is free to the renter.
+For landlords, our property management fee is 8% of the monthly rent. This covers tenant placement, coordination, and ongoing management support. Renters looking for a home pay nothing to Demo Realty; helping renters find a place is free to the renter.
 
 ## First-Time Buyer Credit
 
-Qualifying first-time buyers can receive a closing-cost credit of up to $2,500 through our "Lumina First Key" program. See the first-time buyers page for eligibility.
+Qualifying first-time buyers can receive a closing-cost credit of up to $2,500 through our "Demo First Key" program. See the first-time buyers page for eligibility.
 
 ## What We Do Not Charge For
 

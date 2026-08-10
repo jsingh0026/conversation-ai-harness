@@ -1,0 +1,51 @@
+# Self-hosted Langfuse v2 (single container + Postgres) — the light footprint we
+# chose over v3's 6-container stack (see docs/PRODUCTION_HARDENING.md).
+#
+# Deploy (run from the repo root; needs an interactive `flyctl auth login`):
+#   fly apps create conversation-ai-langfuse
+#   fly postgres attach <your-pg-app> -a conversation-ai-langfuse   # sets DATABASE_URL
+#   fly secrets set -a conversation-ai-langfuse \
+#       NEXTAUTH_URL=https://conversation-ai-langfuse.fly.dev \
+#       NEXTAUTH_SECRET=$(openssl rand -hex 32) \
+#       SALT=$(openssl rand -hex 16) \
+#       ENCRYPTION_KEY=$(openssl rand -hex 32)
+#   fly deploy --config deploy/langfuse/fly.toml -a conversation-ai-langfuse
+#
+# Then in the Langfuse UI (the app URL) create an org + project, copy the keys,
+# and point the harness at it:
+#   fly secrets set -a conversation-ai-harness \
+#       LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
+#       LANGFUSE_BASEURL=https://conversation-ai-langfuse.fly.dev
+# The harness auto-enables its Langfuse exporter once those three are set.
+
+app = "conversation-ai-langfuse"
+primary_region = "sin" # match the harness region for low-latency ingestion
+
+[build]
+  image = "langfuse/langfuse:2" # pin the v2 major; Langfuse runs its own DB migrations on boot
+
+[env]
+  PORT = "3000"
+  HOSTNAME = "0.0.0.0"
+  TELEMETRY_ENABLED = "false"
+  # First run needs signup enabled to create the initial user; flip to true after.
+  AUTH_DISABLE_SIGNUP = "false"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "20s"
+    timeout = "3s"
+    grace_period = "30s" # Langfuse applies DB migrations on first boot
+    method = "GET"
+    path = "/api/public/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  cpus = 1

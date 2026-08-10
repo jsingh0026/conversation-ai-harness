@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { logger } from '../util/logger.js';
+import { redactTrace } from '../util/redact.js';
 import type { TraceExporter } from './exporter.js';
 import { ConsoleSummaryExporter } from './exporters/console.js';
 import { JsonFileExporter } from './exporters/json-file.js';
@@ -52,7 +53,8 @@ export async function fanOut(trace: Trace, list: TraceExporter[]): Promise<void>
 
 /** Fan a finished trace out to every configured exporter; failures never break a turn. */
 export async function emitTrace(trace: Trace): Promise<void> {
-  await fanOut(trace, getExporters());
+  // Mask PII once here so every sink (Langfuse, JSON file) receives redacted data.
+  await fanOut(redactTrace(trace), getExporters());
 }
 
 /** Drain batched exporters (e.g. Langfuse) on process shutdown. */

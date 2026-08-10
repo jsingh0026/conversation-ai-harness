@@ -1,10 +1,10 @@
 # The Buying Process
 
-Buying a home with Lumina Realty is designed to be clear and unhurried. Here is how it typically unfolds. Remember, buyer representation is free to you.
+Buying a home with Demo Realty is designed to be clear and unhurried. Here is how it typically unfolds. Remember, buyer representation is free to you.
 
 ## Step 1: Get Pre-Approved
 
-Before touring homes, we recommend getting a mortgage pre-approval. Pre-approval tells you what you can comfortably afford and shows sellers you are a serious buyer. Lumina is not a lender, but we partner with Harbor Trust Bank and Marisol Credit Union and can point you to them.
+Before touring homes, we recommend getting a mortgage pre-approval. Pre-approval tells you what you can comfortably afford and shows sellers you are a serious buyer. Demo Realty is not a lender, but we partner with Harbor Trust Bank and Marisol Credit Union and can point you to them.
 
 ## Step 2: Meet Your Buyer's Agent
 
@@ -24,7 +24,7 @@ Once an offer is accepted, we help coordinate inspections, appraisal, and your l
 
 ## Step 6: Closing
 
-At closing, you sign the final paperwork and receive your keys. First-time buyers may qualify for a closing-cost credit of up to $2,500 through our "Lumina First Key" program.
+At closing, you sign the final paperwork and receive your keys. First-time buyers may qualify for a closing-cost credit of up to $2,500 through our "Demo First Key" program.
 
 ## A Note on Scope
 

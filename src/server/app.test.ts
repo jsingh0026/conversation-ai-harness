@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MockCrmClient } from '../crm/mock.js';
 import {
   ConversationStore,
-  IdempotencyStore,
+  MemoryIdempotencyStore,
   KeyedQueue,
   Orchestrator,
   type OrchestratorStack,
@@ -10,17 +10,18 @@ import {
 import { StubProvider, textResult } from '../testkit/stub-provider.js';
 import { buildApp } from './app.js';
 
-function harness(results = [textResult('hello back')]) {
+// Default to '' (open) so tests don't inherit an ambient HL_WEBHOOK_SECRET from .env.
+function harness(results = [textResult('hello back')], webhookSecret = '') {
   const crm = new MockCrmClient();
   const provider = new StubProvider(results);
   const history = new ConversationStore();
   const stack: OrchestratorStack = {
     orchestrator: new Orchestrator({ provider, crm, history }),
     queue: new KeyedQueue(),
-    idempotency: new IdempotencyStore(),
+    idempotency: new MemoryIdempotencyStore(),
     history,
   };
-  return { crm, stack, app: buildApp({ crm, stack }) };
+  return { crm, stack, app: buildApp({ crm, stack, webhookSecret }) };
 }
 
 const inbound = (over: Record<string, unknown> = {}) => ({
@@ -54,6 +55,27 @@ describe('POST /webhook', () => {
 
     await stack.queue.onIdle();
     expect(crm.sent).toHaveLength(1);
+  });
+
+  it('rejects a webhook without the configured shared secret', async () => {
+    const { crm, stack, app } = harness([textResult('x')], 'topsecret');
+    const res = await app.inject({ method: 'POST', url: '/webhook', payload: inbound() });
+    expect(res.statusCode).toBe(401);
+    await stack.queue.onIdle();
+    expect(crm.sent).toHaveLength(0);
+  });
+
+  it('accepts a webhook carrying the correct secret header', async () => {
+    const { crm, stack, app } = harness([textResult('ok')], 'topsecret');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/webhook',
+      headers: { 'x-webhook-secret': 'topsecret' },
+      payload: inbound(),
+    });
+    expect(res.statusCode).toBe(202);
+    await stack.queue.onIdle();
+    expect(crm.lastSent()?.body).toBe('ok');
   });
 
   it('ignores non-actionable payloads without processing', async () => {
