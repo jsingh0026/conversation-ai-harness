@@ -11,7 +11,7 @@ import { StubProvider, textResult } from '../testkit/stub-provider.js';
 import { buildApp } from './app.js';
 
 // Default to '' (open) so tests don't inherit an ambient HL_WEBHOOK_SECRET from .env.
-function harness(results = [textResult('hello back')], webhookSecret = '') {
+function harness(results = [textResult('hello back')], webhookSecret = '', debounceMs = 0) {
   const crm = new MockCrmClient();
   const provider = new StubProvider(results);
   const history = new ConversationStore();
@@ -21,8 +21,10 @@ function harness(results = [textResult('hello back')], webhookSecret = '') {
     idempotency: new MemoryIdempotencyStore(),
     history,
   };
-  return { crm, stack, app: buildApp({ crm, stack, webhookSecret }) };
+  return { crm, stack, app: buildApp({ crm, stack, webhookSecret, debounceMs }) };
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const inbound = (over: Record<string, unknown> = {}) => ({
   messageId: 'm1',
@@ -85,6 +87,38 @@ describe('POST /webhook', () => {
     expect(res.json()).toEqual({ ignored: 'empty body' });
     await stack.queue.onIdle();
     expect(crm.sent).toHaveLength(0);
+  });
+
+  it('coalesces a rapid burst of distinct messages into ONE reply (debounce)', async () => {
+    const { crm, stack, app } = harness([textResult('one answer')], '', 40);
+    // three distinct messageIds (all pass idempotency), sent in a burst
+    for (const id of ['m1', 'm2', 'm3']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/webhook',
+        payload: inbound({ messageId: id, body: 'hi' }),
+      });
+      expect(res.statusCode).toBe(202);
+    }
+    await sleep(80); // let the debounce window settle
+    await stack.queue.onIdle();
+    expect(crm.sent).toHaveLength(1); // one coalesced reply, not three
+    expect(crm.lastSent()?.body).toBe('one answer');
+  });
+
+  it('debounce + idempotency: a redelivered id in a burst is not double-counted', async () => {
+    const { crm, stack, app } = harness([textResult('answer')], '', 40);
+    const send = (id: string) =>
+      app.inject({ method: 'POST', url: '/webhook', payload: inbound({ messageId: id, body: 'hi' }) });
+    const a = await send('m1');
+    const b = await send('m1'); // exact redelivery — idempotency should drop it
+    const c = await send('m2');
+    expect(a.statusCode).toBe(202);
+    expect(b.json()).toEqual({ duplicate: true });
+    expect(c.statusCode).toBe(202);
+    await sleep(80);
+    await stack.queue.onIdle();
+    expect(crm.sent).toHaveLength(1); // still one reply
   });
 
   it('health reports the wired CRM + provider', async () => {

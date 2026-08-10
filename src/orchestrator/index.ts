@@ -15,6 +15,7 @@ export { Orchestrator } from './orchestrator.js';
 export { MemoryIdempotencyStore, type IdempotencyStore } from './idempotency.js';
 export { PgIdempotencyStore } from './pg-idempotency.js';
 export { KeyedQueue } from './queue.js';
+export { ConversationDebouncer, type DebouncedBatch } from './debouncer.js';
 export { ConversationStore } from './history.js';
 export type { AgentTool, ToolContext } from './agent-tool.js';
 

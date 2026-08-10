@@ -83,6 +83,11 @@ const EnvSchema = z.object({
   // reset (a returning visitor's "new chat" starts fresh; a refresh keeps it).
   HISTORY_IDLE_RESET_MIN: z.coerce.number().positive().default(30),
 
+  // Coalesce a burst of messages in one conversation into a single turn: wait
+  // this many ms of quiet before processing, folding rapid "hi/hi/hi" (or a
+  // thought split across bubbles) into one reply. 0 = process each immediately.
+  MESSAGE_DEBOUNCE_MS: z.coerce.number().min(0).default(2500),
+
   // --- Persistence (optional) ---
   // When set, the webhook idempotency store is backed by Postgres instead of an
   // in-memory map. Absent = the zero-infra defaults (file KB, in-memory dedup).

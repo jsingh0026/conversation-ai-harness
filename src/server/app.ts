@@ -7,10 +7,15 @@ import { env } from '../config/env.js';
 import { logger } from '../util/logger.js';
 import { createCrmClient } from '../crm/index.js';
 import type { CrmClient } from '../crm/types.js';
-import { createOrchestratorStack, type OrchestratorStack } from '../orchestrator/index.js';
+import {
+  ConversationDebouncer,
+  createOrchestratorStack,
+  type OrchestratorStack,
+} from '../orchestrator/index.js';
 import { createKnowledgeTool } from '../rag/index.js';
 import { createSkills } from '../skills/index.js';
 import { registerOAuthRoutes } from './oauth.js';
+import { verifyHighLevelSignature } from './hl-signature.js';
 import { normalizeWebhook, type HighLevelInboundWebhook } from './webhook.js';
 
 export interface AppDeps {
@@ -18,6 +23,9 @@ export interface AppDeps {
   stack: OrchestratorStack;
   /** Shared secret required on /webhook. Defaults to env.HL_WEBHOOK_SECRET. */
   webhookSecret?: string;
+  /** Debounce window (ms) for coalescing a burst into one turn. 0 = immediate.
+   *  Defaults to env.MESSAGE_DEBOUNCE_MS. Tests pass 0 for determinism. */
+  debounceMs?: number;
 }
 
 /** The secret from the request, via `x-webhook-secret` or `Authorization: Bearer`. */
@@ -59,6 +67,46 @@ export function buildApp(deps: AppDeps = defaultDeps()) {
   const { orchestrator, queue, idempotency } = deps.stack;
   const webhookSecret = deps.webhookSecret ?? env.HL_WEBHOOK_SECRET;
 
+  // Coalesce a rapid burst per conversation into one turn, then serialize turns
+  // on the queue. Every idempotency key in the batch is closed together.
+  const debouncer = new ConversationDebouncer(
+    deps.debounceMs ?? env.MESSAGE_DEBOUNCE_MS,
+    ({ message, keys }) => {
+      void queue
+        .enqueue(message.conversationId, () => orchestrator.runTurn(message))
+        .then((trace) => {
+          // Release keys on failure (so a redelivery reprocesses), else close them.
+          for (const key of keys) {
+            if (trace.error) void idempotency.delete(key);
+            else void idempotency.markDone(key);
+          }
+          if (trace.error) {
+            logger.warn({ conversationId: message.conversationId }, 'turn errored; keys released');
+          }
+        })
+        .catch((err) => {
+          for (const key of keys) void idempotency.delete(key);
+          logger.error({ err, conversationId: message.conversationId }, 'turn processing failed');
+        });
+    },
+  );
+
+  // Keep the raw JSON body alongside the parsed one — HighLevel signs the exact
+  // bytes, so we must verify against the raw string, not a re-serialized object.
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (_req, body, done) => {
+      const raw = typeof body === 'string' ? body : body.toString('utf8');
+      (_req as unknown as { rawBody?: string }).rawBody = raw;
+      try {
+        done(null, raw ? JSON.parse(raw) : {});
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   // Cast around Fastify's custom-logger generic (the injected pino instance
   // makes the concrete type diverge from the default FastifyInstance).
   registerOAuthRoutes(app as unknown as Parameters<typeof registerOAuthRoutes>[0]);
@@ -83,9 +131,15 @@ export function buildApp(deps: AppDeps = defaultDeps()) {
   }
 
   app.post('/webhook', async (request, reply) => {
-    // Authenticity: reject anything without the shared secret (when configured).
-    if (!secretOk(providedSecret(request), webhookSecret)) {
-      request.log.warn('webhook rejected: missing or invalid secret');
+    // Authenticity: accept EITHER our shared secret (our own workflow/test POSTs)
+    // OR a valid HighLevel signature (native InboundMessage webhooks don't send
+    // our secret — they sign the payload with HighLevel's key instead).
+    const rawBody = (request as unknown as { rawBody?: string }).rawBody ?? '';
+    const authed =
+      secretOk(providedSecret(request), webhookSecret) ||
+      verifyHighLevelSignature(rawBody, request.headers);
+    if (!authed) {
+      request.log.warn('webhook rejected: no valid secret or HighLevel signature');
       return reply.code(401).send({ error: 'unauthorized' });
     }
 
@@ -103,32 +157,15 @@ export function buildApp(deps: AppDeps = defaultDeps()) {
       return reply.code(200).send({ duplicate: true });
     }
 
-    // Ack fast; process on the per-conversation queue so rapid back-to-back
-    // messages serialize and a slow turn never blocks the webhook.
-    const { message } = result;
-    void queue
-      .enqueue(message.conversationId, () => orchestrator.runTurn(message))
-      .then((trace) => {
-        if (trace.error) {
-          // On failure, release the key so a HighLevel redelivery can reprocess
-          // (a dropped turn = an ignored customer otherwise).
-          void idempotency.delete(result.idempotencyKey);
-          request.log.warn({ messageId: message.messageId }, 'turn errored; key released for retry');
-        } else {
-          // Close the lease so this message is treated as done, not in-flight.
-          void idempotency.markDone(result.idempotencyKey);
-        }
-      })
-      .catch((err) => {
-        void idempotency.delete(result.idempotencyKey);
-        request.log.error({ err, messageId: message.messageId }, 'turn processing failed');
-      });
+    // Ack fast; the debouncer coalesces a rapid burst into one turn, then the
+    // per-conversation queue serializes turns so a slow one never blocks a webhook.
+    debouncer.add(result.message, result.idempotencyKey);
 
     request.log.info(
-      { conversationId: message.conversationId, messageId: message.messageId },
+      { conversationId: result.message.conversationId, messageId: result.message.messageId },
       'inbound message accepted',
     );
-    return reply.code(202).send({ accepted: true, messageId: message.messageId });
+    return reply.code(202).send({ accepted: true, messageId: result.message.messageId });
   });
 
   return app;
