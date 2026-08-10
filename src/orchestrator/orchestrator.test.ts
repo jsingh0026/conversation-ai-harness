@@ -59,11 +59,28 @@ describe('Orchestrator', () => {
     expect(provider.requests[1]?.messages.at(-1)).toMatchObject({ role: 'tool' });
   });
 
-  it('stays silent when the bot is disabled (already handed over)', async () => {
+  it('sends a holding message (not silence) when the bot is disabled', async () => {
     const crm = new MockCrmClient();
     await crm.setBotEnabled('c1', false);
     const provider = new StubProvider([textResult('should not send')]);
-    const orch = new Orchestrator({ provider, crm });
+    const orch = new Orchestrator({
+      provider,
+      crm,
+      holdingMessage: 'A team member will follow up shortly.',
+    });
+
+    const trace = await orch.runTurn(msg('hi'));
+
+    expect(trace.decision).toBe('bot_disabled');
+    expect(crm.lastSent()?.body).toBe('A team member will follow up shortly.');
+    expect(trace.reply).toBe('A team member will follow up shortly.');
+    expect(provider.requests).toHaveLength(0); // model never called — short-circuited
+  });
+
+  it('stays silent when disabled and no holding message is configured', async () => {
+    const crm = new MockCrmClient();
+    await crm.setBotEnabled('c1', false);
+    const orch = new Orchestrator({ provider: new StubProvider([]), crm, holdingMessage: '' });
 
     const trace = await orch.runTurn(msg('hi'));
 

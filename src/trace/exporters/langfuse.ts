@@ -1,7 +1,21 @@
 import { Langfuse } from 'langfuse';
+import { env } from '../../config/env.js';
 import { logger } from '../../util/logger.js';
 import type { TraceExporter } from '../exporter.js';
-import type { Trace } from '../types.js';
+import type { Trace, TraceStep } from '../types.js';
+
+/** Which KB docs a retrieval step touched, with paths + scores (for the trace UI). */
+function sourcesOf(chunks: { docId: string; score: number }[]): {
+  doc: string;
+  path: string;
+  score: number;
+}[] {
+  return chunks.map((c) => ({
+    doc: c.docId,
+    path: `kb/${c.docId}.md`,
+    score: Math.round(c.score * 1000) / 1000,
+  }));
+}
 
 export interface LangfuseConfig {
   publicKey: string;
@@ -31,13 +45,40 @@ export class LangfuseExporter implements TraceExporter {
     const base = Date.parse(trace.startedAt);
     let offset = 0;
 
+    // Turn-level summary so the trace list answers, at a glance: did this turn
+    // use RAG, and if so which docs — vs. an answer the model gave on its own
+    // (from the system prompt + conversation history, no retrieval/tools).
+    const retrieval = trace.steps.find(
+      (s): s is Extract<TraceStep, { type: 'retrieval' }> => s.type === 'retrieval',
+    );
+    const toolsUsed = trace.steps
+      .filter((s): s is Extract<TraceStep, { type: 'tool' }> => s.type === 'tool')
+      .map((s) => s.name);
+    const ragUsed = Boolean(retrieval);
+    const sources = retrieval ? sourcesOf(retrieval.chunks) : [];
+
     const lfTrace = this.client.trace({
       id: trace.turnId,
-      name: 'agent-turn',
+      // Name = the decision (knowledge / chitchat / skill:<name> / handover / …)
+      // so the Traces list is scannable and filterable, and Langfuse can chart
+      // the decision distribution. (Was a hardcoded "agent-turn".)
+      name: trace.decision,
+      // Group all turns of a conversation into a Session, and segment by contact.
+      // Both ids are opaque (not PII) and enable the conversation-replay + per-user views.
+      sessionId: trace.conversationId,
+      userId: trace.contactId,
+      // Tag errors so they're filterable/alertable in the Traces list.
+      tags: trace.error ? ['error'] : undefined,
       input: trace.input,
       output: trace.reply,
       metadata: {
         decision: trace.decision,
+        // Answer path: which of the three routes the turn took.
+        ragUsed,
+        grounded: retrieval ? retrieval.grounded : undefined,
+        sources, // [{ doc, path, score }] — empty when RAG didn't fire
+        toolsUsed, // skill tool names, empty for chit-chat/knowledge
+        answeredWithoutRetrievalOrTools: !ragUsed && toolsUsed.length === 0,
         conversationId: trace.conversationId,
         contactId: trace.contactId,
         latencyMs: trace.latencyMs,
@@ -47,7 +88,11 @@ export class LangfuseExporter implements TraceExporter {
       },
     });
 
+    // Number each observation so the tree reads as the orchestrator's loop:
+    //   1·llm:decide → 2·retrieval → 3·llm:answer
+    let stepNo = 0;
     for (const step of trace.steps) {
+      stepNo += 1;
       const startTime = new Date(base + offset);
       const latency = 'latencyMs' in step ? step.latencyMs : 0;
       offset += latency;
@@ -55,7 +100,9 @@ export class LangfuseExporter implements TraceExporter {
 
       if (step.type === 'provider_call') {
         lfTrace.generation({
-          name: `llm:${step.provider}`,
+          // "decide" when the model emits tool calls (routes the turn), "answer"
+          // when it produces the final reply — so the loop's intent is legible.
+          name: `${stepNo}·llm:${step.toolCalls.length ? 'decide' : 'answer'}`,
           model: step.model,
           output: step.text,
           usage: { input: step.usage.inputTokens, output: step.usage.outputTokens, unit: 'TOKENS' },
@@ -64,24 +111,48 @@ export class LangfuseExporter implements TraceExporter {
           metadata: { finishReason: step.finishReason, toolCalls: step.toolCalls },
         });
       } else if (step.type === 'retrieval') {
+        const topScore = step.chunks[0]?.score ?? 0;
         lfTrace.span({
-          name: 'retrieval',
+          name: `${stepNo}·retrieval:${step.grounded ? 'grounded' : 'no-match'}`,
           input: step.query,
-          output: { grounded: step.grounded, chunks: step.chunks },
+          output: {
+            grounded: step.grounded,
+            threshold: env.RAG_SCORE_THRESHOLD,
+            sources: sourcesOf(step.chunks), // which docs + paths + scores
+            chunks: step.chunks,
+          },
           startTime,
           endTime,
-          metadata: { grounded: step.grounded, chunkCount: step.chunks.length },
+          metadata: {
+            grounded: step.grounded,
+            threshold: env.RAG_SCORE_THRESHOLD,
+            topScore: Math.round(topScore * 1000) / 1000,
+            chunkCount: step.chunks.length,
+            sources: sourcesOf(step.chunks),
+          },
         });
       } else {
         lfTrace.span({
-          name: `tool:${step.name}`,
+          name: `${stepNo}·tool:${step.name}`,
           input: step.input,
           output: step.output,
           startTime,
           endTime,
+          // Failed tool calls surface as ERROR so they're filterable/alertable.
+          level: step.ok ? 'DEFAULT' : 'ERROR',
+          statusMessage: step.ok ? undefined : `tool ${step.name} failed`,
           metadata: { ok: step.ok },
         });
       }
+    }
+    // Mark a turn-level failure as an ERROR event so it shows on the trace.
+    if (trace.error) {
+      lfTrace.event({
+        name: 'turn-error',
+        level: 'ERROR',
+        statusMessage: trace.error,
+        startTime: new Date(base + offset),
+      });
     }
     // Event creation is fire-and-forget (batched by the SDK). We deliberately do
     // NOT flush per turn — that would drain the whole shared buffer and add a

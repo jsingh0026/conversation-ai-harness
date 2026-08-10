@@ -159,6 +159,32 @@ These are real production needs, intentionally out of scope for the demo:
 
 ---
 
+## Observability (Langfuse) — production review
+
+Implemented after a trace audit:
+- **PII masking** at log + trace sinks — emails and phones (incl. Unicode-dash formats
+  models emit), plus secret keys; the LLM input is left intact (skills need it).
+- **Sessions & users** — `sessionId = conversationId`, `userId = contactId` (opaque ids),
+  so a whole conversation replays in one view and turns are segmentable per contact.
+- **Cost attribution** — model prices registered in Langfuse; per-turn cost now computed
+  (was `$0`/null because the Groq/deepseek models were unpriced).
+- **Error visibility** — failed tool steps emit `level:ERROR`; a turn-level failure emits a
+  `turn-error` ERROR event and the trace is tagged `error` (filterable/alertable).
+- **Decision-named traces** + turn-level `ragUsed` / `grounded` / `sources` (doc + `kb/…md`
+  path + score) / `toolsUsed`, so "why did the agent answer this way" is scannable.
+- **Instance hardening** — Langfuse signup disabled after first user.
+
+Deferred (infra/policy, not quick code):
+- **Retention + sampling** — every turn is traced with full prompt + I/O, no TTL. Add
+  head/tail sampling + a retention policy at volume.
+- **Per-route latency SLO dashboards + alerting** — measured p50≈3.7s / p95≈11.7s across
+  all turn types; the SLO holds for simple turns but RAG/skill/multi-tool turns need their
+  own budgets + alerts, and a hard per-turn timeout (one turn ran 36.9s).
+- **Eval scores → Langfuse** — push eval results as trace scores to track quality over time.
+- **v2 → v3** — v2 stores traces in Postgres (analytics degrade at scale; v3 uses ClickHouse).
+- **Timing fidelity** — spans are stitched from `latencyMs` offsets, not real per-step
+  timestamps (hides inter-step gaps).
+
 ## References
 
 - Fly: [This Is Not Managed Postgres](https://fly.io/docs/postgres/getting-started/what-you-should-know/) ·

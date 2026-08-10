@@ -55,6 +55,12 @@ const EnvSchema = z.object({
   HL_FIELD_PREFERRED_TIME_ID: z.string().optional(),
   HL_HANDOVER_TAG: z.string().default('bot-handover'),
   HL_HANDOVER_USER_ID: z.string().optional(),
+  // Sent when a handed-over conversation gets more customer messages, so the
+  // chat stays responsive instead of going silent while a human follows up.
+  // Set to empty to keep the old silent behavior.
+  HANDOVER_HOLDING_MESSAGE: z
+    .string()
+    .default('Thanks for your message! A team member will follow up with you shortly.'),
 
   // --- RAG ---
   RAG_SCORE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.35),

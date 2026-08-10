@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import type { CrmClient, InboundMessage } from '../crm/types.js';
 import type {
   GenerateResult,
@@ -23,6 +24,9 @@ export interface OrchestratorDeps {
   promptVars?: SystemPromptVars;
   /** Max provider↔tool round-trips before we bail with a fallback reply. */
   maxSteps?: number;
+  /** Reply sent on a handed-over (bot-disabled) turn so the chat isn't silent.
+   *  Empty string = stay silent (legacy). Defaults to env.HANDOVER_HOLDING_MESSAGE. */
+  holdingMessage?: string;
 }
 
 const FALLBACK_REPLY =
@@ -47,6 +51,7 @@ export class Orchestrator {
   private readonly history: ConversationStore;
   private readonly promptVars: SystemPromptVars;
   private readonly maxSteps: number;
+  private readonly holdingMessage: string;
 
   constructor(deps: OrchestratorDeps) {
     this.provider = deps.provider;
@@ -56,6 +61,7 @@ export class Orchestrator {
     this.history = deps.history ?? new ConversationStore();
     this.promptVars = deps.promptVars ?? {};
     this.maxSteps = deps.maxSteps ?? 6;
+    this.holdingMessage = deps.holdingMessage ?? env.HANDOVER_HOLDING_MESSAGE;
   }
 
   async runTurn(message: InboundMessage): Promise<Trace> {
@@ -66,10 +72,22 @@ export class Orchestrator {
     });
 
     try {
-      // Once a conversation is handed to a human, the bot stays silent.
+      // Once a conversation is handed to a human, the bot stops answering — but
+      // it shouldn't go dead. Send a brief holding acknowledgement so the chat
+      // stays responsive while the team follows up (configurable; '' = silent).
       if (!(await this.crm.isBotEnabled(message.conversationId))) {
         trace.setDecision('bot_disabled');
-        trace.setReply(null);
+        if (this.holdingMessage) {
+          await this.crm.sendMessage({
+            conversationId: message.conversationId,
+            contactId: message.contactId,
+            channel: message.channel,
+            body: this.holdingMessage,
+          });
+          trace.setReply(this.holdingMessage);
+        } else {
+          trace.setReply(null);
+        }
         return await this.complete(trace);
       }
 

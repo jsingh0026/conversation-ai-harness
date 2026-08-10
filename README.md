@@ -93,6 +93,33 @@ Inbound webhook → verify secret → normalize → idempotency dedupe → per-c
 Why a tool-loop: the model's own tool-choice *is* the routing decision, so "when to retrieve",
 "which skill", and "just chat" are one uniform mechanism — and each choice is visible in the trace.
 
+### Architecture pattern — an *Augmented LLM* in a bounded agentic loop
+
+The **Augmented LLM** — one model augmented with **retrieval, tools, and memory** — realized here
+(adapted from Anthropic's [*Building Effective Agents*](https://www.anthropic.com/engineering/building-effective-agents)):
+
+```mermaid
+flowchart LR
+  In([Inbound message]) --> LLM((LLM))
+  LLM --> Out([Reply into CRM])
+  LLM <-->|query · chunks + scores| RET[Retrieval<br/>KB / pgvector]
+  LLM <-->|call · result| TOOLS[Tools / Skills<br/>Update Contact · Handover · Booking]
+  LLM <-->|read · write| MEM[Memory<br/>conversation history]
+```
+
+Mapped to that article, this harness is the **Augmented LLM** building block (*"an LLM enhanced with
+retrieval, tools, and memory"*) run as a **bounded autonomous agent** (*"LLMs using tools based on
+environmental feedback in a loop"*). **Routing** — RAG vs. a skill vs. plain chat — isn't a separate classifier; it
+**emerges from the model's tool choice** inside that single loop. We deliberately follow the article's
+*"simplicity first"* guidance and **avoid** the heavier workflow patterns (orchestrator-workers,
+evaluator-optimizer, parallelization) — a single augmented LLM with a RAG tool, skills, and
+conversation memory fully covers a CRM conversation agent. Skills are the article's **Agent-Computer
+Interface**: each is a Zod-typed, documented tool the model fills but never authors.
+
+**You can see the pattern in Langfuse:** every turn's trace tree *is* the loop —
+`GENERATION` (decide) → `retrieval` / `tool:*` span (act on the environment) → `GENERATION` (answer) —
+and the turn's `decision` name + `ragUsed` / `sources` / `toolsUsed` make the routing explicit.
+
 ---
 
 ## The four capabilities

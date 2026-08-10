@@ -38,6 +38,27 @@ export function createHandoverSkill(config: HandoverConfig = {}): AgentTool {
     run: async (args, ctx) => {
       const { reason, finalMessage } = ParamsSchema.parse(args);
 
+      // HITL gate: only hand off once a human can actually reach the customer.
+      // If we're missing their name or any contact channel, DON'T hand off yet —
+      // return a signal so the model asks for the missing details first (the bot
+      // stays enabled so the next turn can capture them). Only asks when needed.
+      const contact = await ctx.crm.getContact(ctx.contactId).catch(() => undefined);
+      const hasName = Boolean(contact?.name?.trim());
+      const hasReach = Boolean(contact?.email || contact?.phone);
+      if (!hasName || !hasReach) {
+        const missing = [!hasName ? 'their name' : '', !hasReach ? 'an email or phone number' : '']
+          .filter(Boolean)
+          .join(' and ');
+        return {
+          handedOver: false,
+          needContactInfo: true,
+          missing,
+          instruction:
+            `Before connecting a human, ask the customer for ${missing} so the team can ` +
+            `follow up. Do NOT tell them they've been handed off yet.`,
+        };
+      }
+
       // Send the final message FIRST. If the send fails, we haven't disabled the
       // bot yet, so the turn errors and can be retried — avoiding a silent
       // dead-end where the bot is off but the customer was never told.

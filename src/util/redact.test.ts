@@ -16,6 +16,12 @@ describe('redactPii', () => {
     expect(redactPii('call 415-555-0123 now')).toContain('***23');
   });
 
+  it('masks phones formatted with Unicode dashes/spaces (models emit these)', () => {
+    // U+2011 non-breaking hyphen + U+00A0 no-break space, as gpt-oss tends to output
+    expect(redactPii('reach us at (555) 012‑8899.')).toContain('***99');
+    expect(redactPii('phone: 415 555–0123')).toContain('***23');
+  });
+
   it('leaves non-PII text untouched', () => {
     expect(redactPii('commission is 5% for sellers')).toBe('commission is 5% for sellers');
   });

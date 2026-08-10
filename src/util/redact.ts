@@ -13,8 +13,15 @@ const MAX_LEN = 8192;
 // bounded dot-separated labels (not one `[...]+` spanning dots), so it's linear.
 const EMAIL_RE = /([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{0,63}(@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,10})/g;
 
-// E.164 (`+` then 8–15 digits) or a separator-formatted 10-digit number. Bounded.
-const PHONE_RE = /\+\d{8,15}\b|(?:\+\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g;
+// E.164 (`+` then 8–15 digits) or a separator-formatted 10-digit number. The
+// separator class covers ASCII space/dot/hyphen AND the Unicode dashes + no-break
+// space that models often emit (e.g. `012‑8899` with U+2011), so those don't slip
+// through unmasked. Bounded (no nested quantifiers) to stay ReDoS-safe.
+const SEP = '[\\s.\\-\\u2010-\\u2015\\u00A0]';
+const PHONE_RE = new RegExp(
+  `\\+\\d{8,15}\\b|(?:\\+\\d{1,3}${SEP}?)?\\(?\\d{3}\\)?${SEP}?\\d{3}${SEP}?\\d{4}\\b`,
+  'g',
+);
 
 function maskPhone(match: string): string {
   const digits = match.replace(/\D/g, '');
