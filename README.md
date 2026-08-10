@@ -19,9 +19,13 @@ Built for a fictional real-estate brokerage, **Demo Realty**. TypeScript · Fast
 
 | | URL |
 |---|---|
+| 🌐 **Demo site (with the live chat widget)** | **https://conversation-ai-harness.fly.dev/** |
 | 🟢 Harness (health) | **https://conversation-ai-harness.fly.dev/health** |
 | 🔎 Langfuse (self-hosted traces) | **https://conversation-ai-langfuse.fly.dev** |
-| 💬 Real end-user path | HighLevel Live Chat widget → workflow → this harness → reply (demo video) |
+| 💬 Real end-user path | the widget on the demo site → HighLevel workflow → this harness → reply (demo video) |
+
+The **demo site** (Demo Realty) is served at `/` by the harness itself and embeds the HighLevel Live
+Chat widget in the corner — chat there and the message flows through the full loop below.
 
 Deployed on Fly.io (region `sin`): the harness on one always-warm machine, **Postgres** for durable
 webhook idempotency, and a **self-hosted Langfuse v2** for traces. The live `/webhook` is
