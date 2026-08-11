@@ -20,6 +20,7 @@ function harness(results = [textResult('hello back')], webhookSecret = '', debou
     queue: new KeyedQueue(),
     idempotency: new MemoryIdempotencyStore(),
     history,
+    stopSweeper: () => {},
   };
   return { crm, stack, app: buildApp({ crm, stack, webhookSecret, debounceMs }) };
 }

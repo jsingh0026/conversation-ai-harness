@@ -64,7 +64,10 @@ function defaultDeps(): AppDeps {
  */
 export function buildApp(deps: AppDeps = defaultDeps()) {
   const app = Fastify({ loggerInstance: logger });
-  const { orchestrator, queue, idempotency } = deps.stack;
+  const { orchestrator, queue, idempotency, stopSweeper } = deps.stack;
+  // Stop the background history sweeper when the app closes (the timer is
+  // unref'd so it won't block exit, but this keeps tests/instances leak-free).
+  app.addHook('onClose', async () => stopSweeper());
   const webhookSecret = deps.webhookSecret ?? env.HL_WEBHOOK_SECRET;
 
   // Coalesce a rapid burst per conversation into one turn, then serialize turns

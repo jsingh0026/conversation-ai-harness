@@ -28,6 +28,8 @@ export interface OrchestratorStack {
   queue: KeyedQueue;
   idempotency: IdempotencyStore;
   history: ConversationStore;
+  /** Stop the background history sweeper (call on shutdown). */
+  stopSweeper: () => void;
 }
 
 /** Build the default stack for a given CRM, with the given tools + prompt vars. */
@@ -37,10 +39,15 @@ export function createOrchestratorStack(
   promptVars: SystemPromptVars = {},
 ): OrchestratorStack {
   const history = new ConversationStore(40, env.HISTORY_IDLE_RESET_MIN * 60 * 1000);
+  // Actively evict idle conversations so in-memory context tracks the ACTIVE set,
+  // not every conversation ever seen (otherwise memory grows unbounded).
+  const stopSweeper = history.startSweeper(undefined, (removed) =>
+    logger.debug({ removed, held: history.size() }, 'history sweep evicted idle conversations'),
+  );
   const orchestrator = new Orchestrator({ provider: createProvider(), crm, tools, history, promptVars });
   const idempotency: IdempotencyStore = isDbEnabled
     ? new PgIdempotencyStore(getDb())
     : new MemoryIdempotencyStore();
   logger.info({ backend: isDbEnabled ? 'postgres' : 'memory' }, 'idempotency store selected');
-  return { orchestrator, queue: new KeyedQueue(), idempotency, history };
+  return { orchestrator, queue: new KeyedQueue(), idempotency, history, stopSweeper };
 }

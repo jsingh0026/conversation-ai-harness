@@ -46,4 +46,43 @@ export class ConversationStore {
     this.convos.delete(conversationId);
     this.lastSeen.delete(conversationId);
   }
+
+  /**
+   * Evict every conversation idle past the reset window. `get()` only resets a
+   * conversation lazily when it comes BACK — so a visitor who chats once and
+   * never returns would otherwise linger forever, making memory grow with every
+   * conversation ever seen rather than the ACTIVE set. A periodic sweep keeps
+   * the store bounded. Returns the number of conversations removed.
+   */
+  sweep(): number {
+    const cutoff = this.now() - this.idleResetMs;
+    let removed = 0;
+    for (const [id, seen] of this.lastSeen) {
+      if (seen < cutoff) {
+        this.convos.delete(id);
+        this.lastSeen.delete(id);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  /** Number of conversations currently held (for metrics/tests). */
+  size(): number {
+    return this.convos.size;
+  }
+
+  /**
+   * Run {@link sweep} on an interval. The timer is `unref`'d so it never keeps
+   * the process alive, and `onSweep` (optional) receives the eviction count for
+   * logging/metrics. Returns a stop function to clear the interval on shutdown.
+   */
+  startSweeper(intervalMs = this.idleResetMs, onSweep?: (removed: number) => void): () => void {
+    const timer = setInterval(() => {
+      const removed = this.sweep();
+      if (removed && onSweep) onSweep(removed);
+    }, intervalMs);
+    (timer as { unref?: () => void }).unref?.();
+    return () => clearInterval(timer);
+  }
 }
