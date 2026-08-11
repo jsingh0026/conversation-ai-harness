@@ -185,6 +185,31 @@ Deferred (infra/policy, not quick code):
 - **Timing fidelity** — spans are stitched from `latencyMs` offsets, not real per-step
   timestamps (hides inter-step gaps).
 
+## Multi-tenancy (multi-agency) — deferred, but the seams support it
+
+The assignment scopes to **one** sandbox account (*"use a sandbox account"*), so the harness is
+single-tenant: config comes from env (`HL_LOCATION_ID`, calendar/field IDs), the HighLevel client is
+a singleton, and the OAuth token is one row (`id='default'`). HighLevel is inherently multi-tenant
+though (agency → sub-accounts → an app installed across many), so here's the path — **all
+config-resolution, not a rewrite** — keyed on **`locationId`** (the tenant unit):
+
+- **Per-location OAuth token** — `hl_oauth_token` already has a `location_id` column; key it by
+  `locationId` (not `'default'`) and store each install's token. `TokenManager` → `forLocation(id)`.
+- **Per-location client** — replace the singleton context with a `Map<locationId, HlContext>`
+  (build/cache on demand); one `HlHttp`/`TokenManager` per tenant.
+- **Route by `locationId`** — the inbound webhook payload already carries `locationId` (we currently
+  drop it in `normalizeWebhook`); read it to pick the tenant's client + config.
+- **Per-location config** — calendar id / assignee / custom-field IDs vary per sub-account: resolve
+  dynamically (list calendars, resolve custom fields **by name**) or from a small `tenant_config` row.
+- **Per-tenant KB** — add `location_id` to `kb_chunks`; filter retrieval + ingest per tenant.
+- **Tenant-scope state** — `processed_messages` + conversation history keyed by `(locationId, …)`;
+  Langfuse traces tagged with the tenant (we already export `provider`; add `tenant`).
+- **Scale-out** — swap the in-memory per-conversation queue for a distributed lock (the Postgres
+  idempotency **lease** already models this) so multiple app instances serve tenants safely.
+
+**Stays global:** the marketplace app's `HL_CLIENT_ID/SECRET` (per-app, shared across installs), the
+embed model, and the harness code itself.
+
 ## References
 
 - Fly: [This Is Not Managed Postgres](https://fly.io/docs/postgres/getting-started/what-you-should-know/) ·
