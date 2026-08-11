@@ -23,3 +23,6 @@ data/
 .idea/
 .vscode/
 *.tsbuildinfo
+
+# Demo video is hosted externally (Google Drive), not committed
+docs/*.mp4

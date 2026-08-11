@@ -22,7 +22,14 @@ Built for a fictional real-estate brokerage, **Demo Realty**. TypeScript · Fast
 | 🌐 **Demo site (with the live chat widget)** | **https://conversation-ai-harness.fly.dev/** |
 | 🟢 Harness (health) | **https://conversation-ai-harness.fly.dev/health** |
 | 🔎 Langfuse (self-hosted traces) | **https://conversation-ai-langfuse.fly.dev** |
-| 💬 Real end-user path | the widget on the demo site → HighLevel native `InboundMessage` webhook → this harness → reply (demo video) |
+| 🎥 **Demo video** (~8 min walkthrough) | **https://drive.google.com/file/d/1iwHlTJ9pIdU3AZDy1dQFTBApixjT73lT/view** — knowledge (grounded + decline), contact update + handover in the CRM, execution trace + provider switch |
+| 💬 Real end-user path | the widget on the demo site → HighLevel native `InboundMessage` webhook → this harness → reply (see demo video) |
+
+<a href="https://drive.google.com/file/d/1iwHlTJ9pIdU3AZDy1dQFTBApixjT73lT/view">
+  <img src="./docs/demo-poster.jpg" alt="Watch the demo video (~8 min)" width="640">
+</a>
+
+▶️ **[Watch the ~8-minute demo](https://drive.google.com/file/d/1iwHlTJ9pIdU3AZDy1dQFTBApixjT73lT/view)** — grounded KB answer + correct decline · contact update + human handover (visible in HighLevel) · one execution trace in Langfuse + a live provider switch.
 
 **Langfuse reviewer login** (read-only, to browse the live traces):
 `dhairya@demo-realty.review` · password `Dhairya-Review-2026` — **VIEWER** on the `conversation-ai`
