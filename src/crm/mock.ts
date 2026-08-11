@@ -130,6 +130,15 @@ export class MockCrmClient implements CrmClient {
     );
   }
 
+  async cancelAppointment(appointmentId: string): Promise<void> {
+    const appt = this.appointments.find((a) => a.id === appointmentId);
+    if (appt) {
+      appt.status = 'cancelled';
+      // Release the slot back so it can be re-offered/re-booked.
+      this.slots.get(appt.calendarId)?.push({ startTime: appt.startTime, endTime: appt.endTime });
+    }
+  }
+
   async isBotEnabled(conversationId: string): Promise<boolean> {
     return this.botState.get(conversationId) ?? true;
   }

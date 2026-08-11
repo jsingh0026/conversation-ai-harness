@@ -25,8 +25,11 @@ const ParamsSchema = z.object({
 
 const DESCRIPTION =
   'Hand the conversation to a human and stop the bot. Call this when the customer ' +
-  'explicitly asks for a person, is clearly frustrated, or asks for something outside ' +
-  'what this assistant can help with (e.g. legal advice, complaints, commercial real estate). ' +
+  'explicitly asks for a person, is clearly frustrated, or needs a human for a ' +
+  'real-estate matter beyond this assistant (e.g. legal/contract advice, a complaint, ' +
+  'commercial real estate, a specific negotiation). Do NOT hand over for off-topic ' +
+  'questions unrelated to real estate (weather, trivia, general chit-chat) — for those, ' +
+  'politely say you can only help with real estate. ' +
   'Provide a short final message; do not also answer the underlying question yourself.';
 
 export function createHandoverSkill(config: HandoverConfig = {}): AgentTool {

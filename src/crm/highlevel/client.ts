@@ -144,6 +144,11 @@ export class HighLevelClient implements CrmClient {
     }
   }
 
+  async cancelAppointment(appointmentId: string): Promise<void> {
+    // HighLevel appointments are calendar events; delete by event id.
+    await this.http.delete(`/calendars/events/${appointmentId}`);
+  }
+
   async getContactAppointments(contactId: string): Promise<Appointment[]> {
     // Fail-open: if the lookup errors or the shape differs, return none so
     // booking still proceeds. The idempotency lease is the primary guard; this

@@ -97,7 +97,19 @@ export class Orchestrator {
         return await this.complete(trace);
       }
 
-      const system = buildSystemPrompt(this.promptVars);
+      // Tell the model what we already have on file for this customer, so it can
+      // proactively ask for a name / email / phone before a booking or handover
+      // (rather than only discovering the gap when a tool refuses). Best-effort.
+      const contact = await this.crm.getContact(message.contactId).catch(() => undefined);
+      const system = buildSystemPrompt({
+        ...this.promptVars,
+        contactName: contact?.name || this.promptVars.contactName,
+        knownContact: {
+          name: contact?.name || undefined,
+          email: contact?.email || undefined,
+          phone: contact?.phone || undefined,
+        },
+      });
       trace.setSystem(system);
 
       const messages: LlmMessage[] = [

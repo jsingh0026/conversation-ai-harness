@@ -38,6 +38,8 @@ export class HlHttp {
   get = <T>(path: string, opts?: RequestOptions): Promise<T> => this.request<T>('GET', path, opts);
   post = <T>(path: string, opts?: RequestOptions): Promise<T> => this.request<T>('POST', path, opts);
   put = <T>(path: string, opts?: RequestOptions): Promise<T> => this.request<T>('PUT', path, opts);
+  delete = <T>(path: string, opts?: RequestOptions): Promise<T> =>
+    this.request<T>('DELETE', path, opts);
 
   private async request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
     const doFetch = async (token: string): Promise<Response> => {

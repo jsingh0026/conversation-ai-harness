@@ -80,6 +80,8 @@ export interface CrmClient {
   createAppointment(input: CreateAppointmentInput): Promise<Appointment>;
   /** A contact's booked appointments — used to make booking idempotent. */
   getContactAppointments(contactId: string): Promise<Appointment[]>;
+  /** Cancel an appointment (used for reschedule: cancel the old, book the new). */
+  cancelAppointment(appointmentId: string): Promise<void>;
 
   // Bot on/off (handover). Not a native HighLevel concept — the harness owns it,
   // mirrored into the CRM via a tag/owner change by the handover skill.
