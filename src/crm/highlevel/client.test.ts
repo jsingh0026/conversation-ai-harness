@@ -74,6 +74,48 @@ describe('HighLevelClient', () => {
     expect(body()).toMatchObject({ firstName: 'Jay', lastName: null });
   });
 
+  it('re-resolves an orphaned contact id (GHL email-merge) and retries the update', async () => {
+    const survivor = { id: 'SURV', firstName: 'Jaspreet', email: 'jaspreet@example.com' };
+    let searchUrl = '';
+    const http = await authedHttp([
+      { method: 'PUT', match: /\/contacts\/DEAD$/, status: 400, json: { message: 'Contact not found for id:DEAD', error: 'Bad Request', statusCode: 400 } },
+      { method: 'GET', match: /\/contacts\/\?/, json: { contacts: [survivor] }, onCall: (u) => (searchUrl = u) },
+      { method: 'PUT', match: /\/contacts\/SURV$/, json: { contact: survivor } },
+    ]);
+    const out = await client(http).updateContactFields('DEAD', {
+      name: 'Jaspreet',
+      email: 'jaspreet@example.com',
+    });
+    expect(out.id).toBe('SURV'); // wrote to the surviving contact, not the dead id
+    expect(searchUrl).toContain('query=jaspreet%40example.com'); // re-found by email
+  });
+
+  it('caches the remap so later calls in the turn skip the dead id', async () => {
+    const survivor = { id: 'SURV', email: 'jaspreet@example.com' };
+    let deadPuts = 0;
+    let searches = 0;
+    const http = await authedHttp([
+      { method: 'PUT', match: /\/contacts\/DEAD$/, status: 400, json: { message: 'Contact not found for id:DEAD' }, onCall: () => (deadPuts += 1) },
+      { method: 'GET', match: /\/contacts\/\?/, json: { contacts: [survivor] }, onCall: () => (searches += 1) },
+      { method: 'PUT', match: /\/contacts\/SURV$/, json: { contact: survivor } },
+    ]);
+    const c = client(http);
+    await c.updateContactFields('DEAD', { email: 'jaspreet@example.com' }); // heals + caches
+    await c.updateContactFields('DEAD', { budget: 500000 }); // goes straight to SURV
+    expect(deadPuts).toBe(1); // only the first attempt hit the dead id
+    expect(searches).toBe(1); // searched once, then reused the cached remap
+  });
+
+  it('rethrows the not-found error when no surviving contact can be found', async () => {
+    const http = await authedHttp([
+      { method: 'PUT', match: /\/contacts\/DEAD$/, status: 400, json: { message: 'Contact not found for id:DEAD' } },
+      { method: 'GET', match: /\/contacts\/\?/, json: { contacts: [] } }, // search finds nothing
+    ]);
+    await expect(
+      client(http).updateContactFields('DEAD', { email: 'nobody@example.com' }),
+    ).rejects.toThrow(/PUT \/contacts\/DEAD failed \(400\)/);
+  });
+
   it('books an appointment, sending the required assignedUserId', async () => {
     const { client: c, body } = await capturingClient({ id: 'appt1' });
     const appt = await c.createAppointment({

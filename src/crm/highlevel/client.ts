@@ -59,15 +59,53 @@ interface HlAppointmentEvent {
 export class HighLevelClient implements CrmClient {
   readonly kind = 'highlevel' as const;
   private readonly botState = new Map<string, boolean>();
+  // HighLevel de-dupes contacts by email/phone: a contactId delivered in a
+  // webhook can be orphaned when GHL merges it into another contact, after which
+  // every /contacts/{id} call returns "Contact not found". When that happens we
+  // re-resolve by email/phone and cache dead→survivor here, so the rest of the
+  // turn (the reply send, the booking) targets the live id instead of dead-airing.
+  private readonly idRemap = new Map<string, string>();
 
   constructor(
     private readonly http: HlHttp,
     private readonly config: HighLevelClientConfig,
   ) {}
 
+  /** Translate a possibly-orphaned contactId to its live one (identity if unknown). */
+  private live(contactId: string): string {
+    return this.idRemap.get(contactId) ?? contactId;
+  }
+
+  /** True for HighLevel's "Contact not found" (a merged/deleted id). */
+  private static isContactNotFound(err: unknown): boolean {
+    return (
+      err instanceof HlApiError && err.status === 400 && /contact not found/i.test(err.body ?? '')
+    );
+  }
+
+  /** Find a contact by its de-dupe key (email, else phone). First match wins. */
+  async findContact(by: { email?: string; phone?: string }): Promise<Contact | undefined> {
+    const query = by.email ?? by.phone;
+    if (!query) return undefined;
+    try {
+      const res = await this.http.get<{ contacts?: HlContact[] }>('/contacts/', {
+        query: { locationId: this.config.locationId, query },
+      });
+      const hit = res.contacts?.[0];
+      return hit ? mapContact(hit) : undefined;
+    } catch (err) {
+      logger.warn({ err }, 'findContact failed');
+      return undefined;
+    }
+  }
+
   async sendMessage(input: SendMessageInput): Promise<{ messageId: string }> {
     const res = await this.http.post<{ messageId?: string; id?: string }>('/conversations/messages', {
-      body: { type: toHlMessageType(input.channel), contactId: input.contactId, message: input.body },
+      body: {
+        type: toHlMessageType(input.channel),
+        contactId: this.live(input.contactId),
+        message: input.body,
+      },
     });
     return { messageId: res.messageId ?? res.id ?? '' };
   }
@@ -100,7 +138,7 @@ export class HighLevelClient implements CrmClient {
   }
 
   async getContact(contactId: string): Promise<Contact> {
-    const res = await this.http.get<{ contact: HlContact }>(`/contacts/${contactId}`);
+    const res = await this.http.get<{ contact: HlContact }>(`/contacts/${this.live(contactId)}`);
     return mapContact(res.contact);
   }
 
@@ -131,8 +169,27 @@ export class HighLevelClient implements CrmClient {
     }
     if (customFields.length) body.customFields = customFields;
 
-    const res = await this.http.put<{ contact: HlContact }>(`/contacts/${contactId}`, { body });
-    return mapContact(res.contact);
+    try {
+      const res = await this.http.put<{ contact: HlContact }>(
+        `/contacts/${this.live(contactId)}`,
+        { body },
+      );
+      return mapContact(res.contact);
+    } catch (err) {
+      if (!HighLevelClient.isContactNotFound(err)) throw err;
+      // The webhook's contactId was orphaned by a GHL merge. We're writing the
+      // customer's email/phone right now, so re-find the surviving contact by
+      // that key, remember the remap for the rest of the turn, and retry once.
+      const survivor = await this.findContact({
+        email: typeof fields.email === 'string' ? fields.email : undefined,
+        phone: typeof fields.phone === 'string' ? fields.phone : undefined,
+      });
+      if (!survivor) throw err;
+      this.idRemap.set(contactId, survivor.id);
+      logger.warn({ from: contactId, to: survivor.id }, 're-resolved orphaned contact id');
+      const res = await this.http.put<{ contact: HlContact }>(`/contacts/${survivor.id}`, { body });
+      return mapContact(res.contact);
+    }
   }
 
   async addTag(contactId: string, tag: string): Promise<void> {
