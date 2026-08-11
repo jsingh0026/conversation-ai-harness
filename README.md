@@ -117,8 +117,15 @@ flowchart LR
   LLM --> Out([Reply into CRM])
   LLM <-->|query · chunks + scores| RET[Retrieval<br/>KB / pgvector]
   LLM <-->|call · result| TOOLS[Tools / Skills<br/>Update Contact · Handover · Booking]
-  LLM <-->|read · write| MEM[Memory<br/>conversation history]
+  LLM <-->|read · write| MEM[Working context<br/>last 40 msgs, in-memory]
 ```
+
+> **Source of truth is HighLevel, not this box.** The *Working context* is a bounded, in-memory
+> buffer (last 40 messages, per conversation) that assembles the model's context window each turn —
+> a cache, not a store. The durable conversation log lives in HighLevel (system of record); every
+> reply is written back there. On restart the buffer starts cold and rebuilds from the next turn —
+> HighLevel still holds the full thread (a `getConversationHistory` seam exists to rehydrate from it
+> if that ever matters; single-tenant demo scope doesn't need it).
 
 Mapped to that article, this harness is the **Augmented LLM** building block (*"an LLM enhanced with
 retrieval, tools, and memory"*) run as a **bounded autonomous agent** (*"LLMs using tools based on
@@ -255,7 +262,7 @@ graders' "is a 4th provider or 3rd skill cheap?" question is a clear yes.
 | **RAG as a tool**, threshold-gated | selective retrieval + explicit decline (never invent) | one extra model hop when it does retrieve |
 | **On-device embeddings** (`bge-small`) | zero embedding-API cost/latency; runs offline | model download baked into the image |
 | **Vector index: file locally, `pgvector` in prod** | file = sub-ms over ~94 chunks, zero infra; pgvector on Fly Managed Postgres in prod | `PGVECTOR=true` gates pgvector (Fly's flex PG lacks the extension → we use Managed PG) |
-| **HighLevel is system-of-record** | contacts + conversations aren't duplicated into our DB | history re-hydration from HL (`getConversationHistory` CRM method in place; orchestrator wiring underway) |
+| **HighLevel is system-of-record** | contacts + conversations aren't duplicated into our DB; our in-memory context is just a per-turn cache | after a restart the context buffer rebuilds from the next turn (`getConversationHistory` seam exists to rehydrate from HL; single-tenant scope doesn't need it) |
 | **Mock-first CRM** behind `CrmClient` | whole loop runs offline; live client is a config swap | live HL client shapes unit-tested, then exercised live |
 
 More in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
