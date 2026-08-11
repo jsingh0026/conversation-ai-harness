@@ -55,7 +55,7 @@ EMBED_LOCAL=true               # on-device embeddings, no key
 CRM_MODE=mock" > .env
 
 pnpm ingest        # build the KB vector index (on-device embeddings)
-pnpm test          # 187 unit tests
+pnpm test          # 195 unit tests
 pnpm dev           # webhook server on :3000
 
 # In another shell — send a customer message through the full loop (mock CRM):
@@ -341,7 +341,7 @@ a cloud embedder (`EMBED_PROVIDER`/`EMBED_MODEL`). For the real sandbox + Fly de
 | `pnpm eval [provider...] [suite...]` | One-command eval suite |
 | `pnpm trace [<id>\|latest]` | Terminal trace viewer |
 | `pnpm providers:smoke [provider]` | Check a provider returns a tool call |
-| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 187 tests · types · lint |
+| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 195 tests · types · lint |
 | `pnpm db:migrate` · `pnpm ingest:pg` | Apply schema / load KB into Postgres (when `DATABASE_URL` set) |
 
 ## Repo layout
@@ -376,7 +376,7 @@ docs/            ARCHITECTURE, SETUP, KNOWLEDGE_BASE (add a KB doc), OKF_DESIGN,
   trace surface is designed around one question: *why did the agent say that?*
 - **Engineering** — a bounded tool-use loop as the single decision mechanism; the Vercel AI SDK for
   normalized multi-provider calls; a swappable vector index (file → pgvector); mock-first, offline-runnable.
-- **QA** — 187 unit tests + an independent adversarial review sweep after every phase (findings
+- **QA** — 195 unit tests + an independent adversarial review sweep after every phase (findings
   applied before moving on), plus the eval suite as behavioral regression coverage.
 
 ## Functional vs. mocked
