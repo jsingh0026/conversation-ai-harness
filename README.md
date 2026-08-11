@@ -22,7 +22,7 @@ Built for a fictional real-estate brokerage, **Demo Realty**. TypeScript · Fast
 | 🌐 **Demo site (with the live chat widget)** | **https://conversation-ai-harness.fly.dev/** |
 | 🟢 Harness (health) | **https://conversation-ai-harness.fly.dev/health** |
 | 🔎 Langfuse (self-hosted traces) | **https://conversation-ai-langfuse.fly.dev** |
-| 💬 Real end-user path | the widget on the demo site → HighLevel workflow → this harness → reply (demo video) |
+| 💬 Real end-user path | the widget on the demo site → HighLevel native `InboundMessage` webhook → this harness → reply (demo video) |
 
 **Langfuse reviewer login** (read-only, to browse the live traces):
 `dhairya@demo-realty.review` · password `Dhairya-Review-2026` — **VIEWER** on the `conversation-ai`
@@ -68,7 +68,7 @@ pnpm eval          # one-command eval suite (add provider keys)
 | **Extensible skills = registration** | `src/skills/` — Update Contact, Human Handover, Appointment Booking; add one = one file + one array entry | `src/skills/index.ts`; the three `*.skill.ts` files |
 | **Execution transparency (per-turn trace)** | canonical `Trace` → Langfuse + JSON + CLI (`src/trace/`) | `pnpm trace latest`, or the live Langfuse UI |
 | **Webhook realities: idempotency + rapid messages** | `IdempotencyStore` (dedupe, w/ Postgres lease) + per-conversation `KeyedQueue` (serialize) | `src/orchestrator/{idempotency,queue}.ts` + tests |
-| **Latency p50 ≤ 3s / p95 ≤ 6s** | fast-ack webhook, async processing; measured live at ~2.5s | `latency` eval suite; deployed turn logged `latencyMs: 2534` |
+| **Latency p50 ≤ 3s / p95 ≤ 6s** | fast-ack webhook, async processing; measured per-provider, all within target | `latency` eval suite — p50 **0.86s** (gpt-4.1-nano) to **2.06s** (gemini-flash-latest); table below |
 | **One-command evals w/ negatives** | `pnpm eval` — 116 gold cases across 5 behaviors + latency, incl. must-NOT-fire negatives | `pnpm eval`; `evals/` |
 | **Team-of-One, functional-vs-mocked** | below + [`docs/`](./docs) | this README |
 
@@ -197,10 +197,10 @@ a length guard keep it ReDoS-safe on the hot path. See `src/util/redact.ts`.
 ## Latency & Evals (the quality bars)
 
 **Latency** — fast webhook ack + async per-conversation processing. Target **p50 ≤ 3s / p95 ≤ 6s**
-webhook-to-send for **non-RAG** turns; simple turns land **~2.5s** on Groq (within target). RAG and
-skill turns add a model hop (two `generate` calls) so they run higher — expected, and the target is
-scoped to non-RAG turns; reasoning models (e.g. deepseek) roughly double these. Per-turn `latencyMs`
-is on every trace.
+webhook-to-send for **non-RAG** turns; measured per-provider it lands **p50 0.86–2.06s / p95
+1.28–2.60s** — all within target (see the eval table). RAG and skill turns add a model hop (two
+`generate` calls) so they run higher — expected, and the target is scoped to non-RAG turns. Per-turn
+`latencyMs` is on every trace.
 
 **Evals — one command, negatives included, per provider:**
 
