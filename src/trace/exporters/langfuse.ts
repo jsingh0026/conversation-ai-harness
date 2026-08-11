@@ -78,6 +78,10 @@ export class LangfuseExporter implements TraceExporter {
       output: trace.reply,
       metadata: {
         decision: trace.decision,
+        // Which LLM produced this turn (one provider/model per turn) — surfaced
+        // at the trace level so you can filter/group by provider in Langfuse.
+        provider: trace.steps.find((s) => s.type === 'provider_call')?.provider,
+        model: trace.steps.find((s) => s.type === 'provider_call')?.model,
         // Answer path: which of the three routes the turn took.
         ragUsed,
         grounded: retrieval ? retrieval.grounded : undefined,
@@ -113,7 +117,7 @@ export class LangfuseExporter implements TraceExporter {
           usage: { input: step.usage.inputTokens, output: step.usage.outputTokens, unit: 'TOKENS' },
           startTime,
           endTime,
-          metadata: { finishReason: step.finishReason, toolCalls: step.toolCalls },
+          metadata: { provider: step.provider, finishReason: step.finishReason, toolCalls: step.toolCalls },
         });
       } else if (step.type === 'retrieval') {
         const topScore = step.chunks[0]?.score ?? 0;
