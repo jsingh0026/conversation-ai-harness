@@ -211,9 +211,11 @@ a length guard keep it ReDoS-safe on the hot path. See `src/util/redact.ts`.
 ## Latency & Evals (the quality bars)
 
 **Latency** — fast webhook ack + async per-conversation processing. Target **p50 ≤ 3s / p95 ≤ 6s**
-webhook-to-send for **non-RAG** turns; measured per-provider it lands **p50 0.86–2.06s / p95
-1.28–2.60s** — all within target (see the eval table). RAG and skill turns add a model hop (two
-`generate` calls) so they run higher — expected, and the target is scoped to non-RAG turns. Per-turn
+webhook-to-send for **non-RAG turns** — i.e. the single-hop turns that don't retrieve or call a
+tool: greetings, acknowledgements, thanks, quick chit-chat (one `generate`, straight to a reply).
+Measured per-provider it lands **p50 0.86–2.06s / p95 1.28–2.60s** — all within target (see the eval
+table). RAG and skill turns add a second model hop (two `generate` calls, plus a retrieval or CRM
+round-trip) so they run higher — expected, and the target is scoped to non-RAG turns. Per-turn
 `latencyMs` is on every trace.
 
 **Evals — one command, negatives included, per provider:**
@@ -233,7 +235,7 @@ a latency suite:
 | `update-contact` | 22 | extraction fires + correct fields; **negatives don't fire** |
 | `handover` | 22 | fires on explicit/frustrated/out-of-scope; **negatives don't fire** |
 | `appointment` | 22 | booking intent triggers slot lookup; **negatives don't fire** |
-| `latency` | 8 | p50/p95 webhook-to-send (non-RAG) |
+| `latency` | 8 | p50/p95 webhook-to-send on non-RAG turns (greetings/acks — no retrieval or tool) |
 
 Grounded facts are matched with word/number boundaries (so `5%` ≠ `15%`); declines are checked
 against a fabricated-figure denylist. Infra errors (e.g. a missing embedding key) are surfaced as
