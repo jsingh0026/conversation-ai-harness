@@ -113,9 +113,14 @@ export class HighLevelClient implements CrmClient {
 
     for (const [key, value] of Object.entries(fields)) {
       if (key === 'name') {
-        const [first, ...rest] = String(value).split(' ');
+        const [first, ...rest] = String(value).trim().split(/\s+/);
         body.firstName = first;
-        if (rest.length) body.lastName = rest.join(' ');
+        // Always overwrite the surname, even when only a first name was given.
+        // Live-chat guests arrive with a placeholder like "Visitor bnbny";
+        // writing firstName alone would leave that stale suffix on the record.
+        // HighLevel IGNORES an empty-string standard field (verified: `""` is a
+        // no-op), so to actually clear the surname we must send `null`.
+        body.lastName = rest.length ? rest.join(' ') : null;
       } else if (STANDARD_FIELDS.has(key)) {
         body[key] = value;
       } else {

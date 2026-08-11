@@ -57,9 +57,10 @@ const DESCRIPTION =
   'Save details the customer shares about themselves — their name, email, phone, ' +
   'budget, or preferred viewing/contact time — to their CRM contact record. ' +
   'Only include fields the customer actually stated. If a field already has a DIFFERENT ' +
-  'value on record, the tool returns needsConfirmation with the existing value — tell the ' +
-  'customer what we have and confirm before changing it (then re-call with confirmOverwrite=true). ' +
-  'Do not guess or ask for all of them.';
+  'value the customer gave earlier, the tool returns needsConfirmation with the existing value — ' +
+  'tell the customer what we have and confirm before changing it (then re-call with ' +
+  'confirmOverwrite=true). An auto-assigned guest name (e.g. "Guest Visitor byskx") is not a ' +
+  'real value and is overwritten directly without asking. Do not guess or ask for all of them.';
 
 type FieldKey = 'name' | 'email' | 'phone' | 'budget' | 'preferredTime';
 
@@ -76,6 +77,18 @@ function existingValue(contact: Contact, field: FieldKey): string | number | und
   };
   const id = idFor[field];
   return contact.fields[field] ?? (id ? contact.fields[id] : undefined);
+}
+
+/** True when a name on file wasn't given by the customer but auto-assigned by
+ *  HighLevel for a live-chat guest — e.g. "Guest Visitor byskx". We overwrite
+ *  these directly (no confirmation): confirming against a placeholder the
+ *  customer never stated is pure friction. A real name they gave earlier (a
+ *  prior update_contact_field call) does NOT match, so genuine changes still
+ *  ask first. */
+function isPlaceholderName(v: string): boolean {
+  const s = v.trim().toLowerCase();
+  if (s === '') return true;
+  return /\b(guest|visitor|unknown|anonymous)\b/.test(s);
 }
 
 /** Comparable, normalized form of a value for conflict detection. */
@@ -105,15 +118,19 @@ export function createUpdateContactSkill(): AgentTool {
 
       for (const [field, value] of Object.entries(provided) as [FieldKey, string | number][]) {
         const existing = contact ? existingValue(contact, field) : undefined;
-        const isBlank = existing === undefined || existing === null || String(existing).trim() === '';
+        const existingStr = existing === undefined || existing === null ? '' : String(existing);
+        // Treat an auto-assigned guest name ("Guest Visitor byskx") as no name on
+        // file, so the customer's real name overwrites it without a confirmation.
+        const isBlank =
+          existingStr.trim() === '' || (field === 'name' && isPlaceholderName(existingStr));
         if (isBlank) {
           toWrite[field] = value; // first time — just save
-        } else if (norm(field, existing) === norm(field, value)) {
+        } else if (norm(field, existingStr) === norm(field, value)) {
           unchanged.push(field); // already what we have — no-op
         } else if (input.confirmOverwrite) {
           toWrite[field] = value; // customer confirmed the change
         } else {
-          conflicts.push({ field, existing: String(existing), requested: String(value) });
+          conflicts.push({ field, existing: existingStr, requested: String(value) });
         }
       }
 

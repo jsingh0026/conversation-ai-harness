@@ -74,6 +74,22 @@ describe('update_contact_field skill', () => {
     expect(c.name).toBe('Alex'); // still not overwritten
   });
 
+  it('overwrites an auto-assigned guest name directly (no confirmation friction)', async () => {
+    const crm = new MockCrmClient();
+    // HighLevel assigns live-chat visitors a placeholder name the customer never gave.
+    crm.upsertContact({ id: 'ct1', name: 'Guest Visitor byskx' });
+    const skill = createUpdateContactSkill();
+    const out = (await skill.run({ name: 'Jaspreet' }, makeToolContext({ crm }))) as {
+      updated: boolean;
+      needsConfirmation?: boolean;
+      savedFields: string[];
+    };
+    expect(out.updated).toBe(true); // no friction — placeholder isn't a real value
+    expect(out.needsConfirmation).toBeUndefined();
+    expect(out.savedFields).toContain('name');
+    expect((await crm.getContact('ct1')).name).toBe('Jaspreet');
+  });
+
   it('treats the same value as unchanged (no conflict)', async () => {
     const crm = new MockCrmClient();
     crm.upsertContact({ id: 'ct1', name: 'Alex' });

@@ -64,6 +64,16 @@ describe('HighLevelClient', () => {
     });
   });
 
+  it('clears the guest placeholder surname when only a first name is given', async () => {
+    const { client: c, body } = await capturingClient({
+      contact: { id: 'ct1', firstName: 'Jay' },
+    });
+    // Guest arrived as "Jay Visitor bnbny"; they tell us just "Jay".
+    // HighLevel ignores an empty-string field, so the surname must be nulled to clear it.
+    await c.updateContactFields('ct1', { name: 'Jay' });
+    expect(body()).toMatchObject({ firstName: 'Jay', lastName: null });
+  });
+
   it('books an appointment, sending the required assignedUserId', async () => {
     const { client: c, body } = await capturingClient({ id: 'appt1' });
     const appt = await c.createAppointment({
