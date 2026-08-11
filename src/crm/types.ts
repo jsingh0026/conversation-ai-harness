@@ -15,6 +15,14 @@ export interface Contact {
   assignedUserId?: string;
 }
 
+/** A prior conversation message, for rehydrating context (CRM-neutral shape). */
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  /** ISO timestamp — used to keep only recent context on rehydrate. */
+  timestamp: string;
+}
+
 export interface InboundMessage {
   /** Provider message id — used for idempotency. */
   messageId: string;
@@ -68,6 +76,12 @@ export interface CrmClient {
 
   // Conversations
   sendMessage(input: SendMessageInput): Promise<{ messageId: string }>;
+  /** Recent messages in a conversation (oldest→newest) for rehydrating context
+   *  after a restart. Returns [] if unavailable. */
+  getConversationHistory(
+    conversationId: string,
+    opts?: { limit?: number },
+  ): Promise<ConversationMessage[]>;
 
   // Contacts
   getContact(contactId: string): Promise<Contact>;

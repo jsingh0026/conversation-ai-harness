@@ -6,7 +6,7 @@
   { "id": "ho-05", "message": "You're not helping at all, get me a person.", "expectSkill": "request_human_handover", "note": "Frustration plus human request." },
   { "id": "ho-06", "message": "Can you help me sell my commercial warehouse?", "expectSkill": "request_human_handover", "note": "Commercial real estate is out of scope." },
   { "id": "ho-07", "message": "I need legal advice on a boundary dispute with my neighbor.", "expectSkill": "request_human_handover", "note": "Legal advice is out of scope." },
-  { "id": "ho-08", "message": "Can Demo Realty lend me the money directly for the purchase?", "expectSkill": "request_human_handover", "note": "Direct loans out of scope; hand to a human." },
+  { "id": "ho-08", "message": "Can Demo Realty lend me the money directly for the purchase?", "expectSkill": null, "note": "Answerable from KB (not a lender; partners with local banks) — consistent with ho-22. A grounded decline is correct, not a handover." },
   { "id": "ho-09", "message": "This bot is going in circles, I want a live representative.", "expectSkill": "request_human_handover", "note": "Frustration plus human request." },
   { "id": "ho-10", "message": "Please have an actual person call me back.", "expectSkill": "request_human_handover", "note": "Explicit human request." },
   { "id": "ho-11", "message": "I'm looking to buy a strip mall, can you list it for me?", "expectSkill": "request_human_handover", "note": "Commercial real estate out of scope." },

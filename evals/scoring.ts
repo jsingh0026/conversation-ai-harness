@@ -68,13 +68,25 @@ export const FABRICATION_RE = /\$\s?\d|\d+(\.\d+)?\s?%/;
  * fallback/budget-exhausted reply is NOT a valid decline — that's a failure, not
  * a deliberate "I don't have that". (Heuristic; documented as such in the README.)
  */
+/** Digits of a money/number token, with a trailing `k` expanded (400k → 400000). */
+const numKey = (s: string): string => s.toLowerCase().replace(/k/g, '000').replace(/[^0-9]/g, '');
+
 export function declinePass(
   reply: string | null,
   decision: string,
   budgetExhausted = false,
+  query = '',
 ): boolean {
   if (decision === 'handover' || decision === 'bot_disabled') return true;
   if (budgetExhausted) return false;
   if (!reply) return true;
-  return !FABRICATION_RE.test(reply);
+  if (!FABRICATION_RE.test(reply)) return true;
+  // The reply contains a figure — allow it only if EVERY $-figure just echoes a
+  // number the customer themselves stated (e.g. declining "3-beds under $400k" by
+  // repeating $400k). A percentage or a figure not in the query = fabrication.
+  if (/\d+(\.\d+)?\s?%/.test(reply)) return false; // never echo a rate on a decline
+  const queryNums = new Set((query.match(/\$?\s?\d[\d,]*\s?k?/gi) ?? []).map(numKey).filter(Boolean));
+  const replyFigs = (reply.match(/\$\s?\d[\d,]*\s?k?/gi) ?? []).map(numKey).filter(Boolean);
+  if (replyFigs.length === 0) return false;
+  return replyFigs.every((f) => [...queryNums].some((q) => q && (f.includes(q) || q.includes(f))));
 }

@@ -4,10 +4,19 @@ import type {
   Appointment,
   CalendarSlot,
   Contact,
+  ConversationMessage,
   CreateAppointmentInput,
   CrmClient,
   SendMessageInput,
 } from '../types.js';
+
+/** Shape of a HighLevel conversation message (fields we use). */
+interface HlConversationMessage {
+  id?: string;
+  direction?: string; // 'inbound' | 'outbound'
+  body?: string;
+  dateAdded?: string;
+}
 import { HlApiError, type HlHttp } from './http.js';
 import {
   mapContact,
@@ -61,6 +70,33 @@ export class HighLevelClient implements CrmClient {
       body: { type: toHlMessageType(input.channel), contactId: input.contactId, message: input.body },
     });
     return { messageId: res.messageId ?? res.id ?? '' };
+  }
+
+  async getConversationHistory(
+    conversationId: string,
+    opts?: { limit?: number },
+  ): Promise<ConversationMessage[]> {
+    // Fail-open: if the fetch errors or the shape differs, return none so a turn
+    // still proceeds (just without rehydrated context).
+    try {
+      const res = await this.http.get<{ messages?: { messages?: HlConversationMessage[] } }>(
+        `/conversations/${conversationId}/messages`,
+        { query: { limit: opts?.limit ?? 20 } },
+      );
+      const raw = res.messages?.messages ?? [];
+      return raw
+        .filter((m) => (m.body ?? '').trim())
+        .map((m) => ({
+          role: /out/i.test(m.direction ?? '') ? ('assistant' as const) : ('user' as const),
+          content: m.body!.trim(),
+          timestamp: m.dateAdded ?? '',
+        }))
+        // HighLevel returns newest-first; we want oldest→newest for context.
+        .reverse();
+    } catch (err) {
+      logger.warn({ err, conversationId }, 'getConversationHistory failed; no rehydrated context');
+      return [];
+    }
   }
 
   async getContact(contactId: string): Promise<Contact> {

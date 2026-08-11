@@ -3,6 +3,7 @@ import type {
   Appointment,
   CalendarSlot,
   Contact,
+  ConversationMessage,
   CreateAppointmentInput,
   CrmClient,
   SendMessageInput,
@@ -32,12 +33,27 @@ export class MockCrmClient implements CrmClient {
   private slots = new Map<string, CalendarSlot[]>();
 
   readonly sent: SentMessage[] = [];
+  /** Prior conversation history keyed by conversationId (for rehydrate tests). */
+  private history = new Map<string, ConversationMessage[]>();
 
-  constructor(seed?: { contacts?: Contact[]; slots?: Record<string, CalendarSlot[]> }) {
+  constructor(seed?: {
+    contacts?: Contact[];
+    slots?: Record<string, CalendarSlot[]>;
+    history?: Record<string, ConversationMessage[]>;
+  }) {
     for (const c of seed?.contacts ?? []) this.contacts.set(c.id, c);
     // Copy the seeded slots — booking splices this array, and we must not mutate
     // the caller's fixture (shared across tests).
     for (const [calId, slots] of Object.entries(seed?.slots ?? {})) this.slots.set(calId, [...slots]);
+    for (const [cid, msgs] of Object.entries(seed?.history ?? {})) this.history.set(cid, [...msgs]);
+  }
+
+  async getConversationHistory(
+    conversationId: string,
+    opts?: { limit?: number },
+  ): Promise<ConversationMessage[]> {
+    const all = this.history.get(conversationId) ?? [];
+    return opts?.limit ? all.slice(-opts.limit) : all;
   }
 
   /** Test helper: ensure a contact exists, creating an empty one if needed. */

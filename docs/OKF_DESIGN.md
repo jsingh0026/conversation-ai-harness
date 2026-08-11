@@ -13,7 +13,7 @@ knowledge (structure, provenance, freshness, links); vector RAG is how you *find
 a fuzzy question (semantic recall + a confidence score to decline). So the design here is
 **OKF-as-format + RAG-as-finder + provenance-in-the-trace**, not a retrieval rewrite.
 
-For our current **14-doc, static KB** the payoff is modest (docs are already small + self-contained).
+For our current **13-doc, static KB** the payoff is modest (docs are already small + self-contained).
 This is the **"if the KB grew / needed governance" upgrade path**, captured for the writeup.
 
 ---

@@ -24,14 +24,19 @@ Built for a fictional real-estate brokerage, **Demo Realty**. TypeScript · Fast
 | 🔎 Langfuse (self-hosted traces) | **https://conversation-ai-langfuse.fly.dev** |
 | 💬 Real end-user path | the widget on the demo site → HighLevel workflow → this harness → reply (demo video) |
 
+**Langfuse reviewer login** (read-only, to browse the live traces):
+`dhairya@demo-realty.review` · password `Dhairya-Review-2026` — **VIEWER** on the `conversation-ai`
+project (view Traces / Sessions / Generations; can't edit).
+
 The **demo site** (Demo Realty) is served at `/` by the harness itself and embeds the HighLevel Live
 Chat widget in the corner — chat there and the message flows through the full loop below.
 
-Deployed on Fly.io (region `sin`): the harness on one always-warm machine, **Postgres** for durable
-webhook idempotency, and a **self-hosted Langfuse v2** for traces. The live `/webhook` is
-secret-protected (`x-webhook-secret`) as a production posture — exercise the full loop either via the
-**HighLevel Live Chat widget** (the genuine user path, in the demo video) or **locally against mocks**
-(next section), which needs no accounts.
+Deployed on Fly.io (region `sin`): the harness on one always-warm machine, **Fly Managed Postgres
+with `pgvector`** (the KB vector store **and** webhook idempotency), and a **self-hosted Langfuse v2**
+for traces. The live `/webhook` accepts either our shared secret (`x-webhook-secret`) **or** a valid
+HighLevel webhook signature (`x-ghl-signature`) — exercise the full loop via the **HighLevel Live Chat
+widget** (the genuine user path, in the demo video) or **locally against mocks** (next section), which
+needs no accounts.
 
 ### Evaluate the whole thing in ~10 minutes
 
@@ -43,7 +48,7 @@ EMBED_LOCAL=true               # on-device embeddings, no key
 CRM_MODE=mock" > .env
 
 pnpm ingest        # build the KB vector index (on-device embeddings)
-pnpm test          # 151 unit tests
+pnpm test          # 187 unit tests
 pnpm dev           # webhook server on :3000
 
 # In another shell — send a customer message through the full loop (mock CRM):
@@ -68,7 +73,8 @@ pnpm eval          # one-command eval suite (add provider keys)
 | **Team-of-One, functional-vs-mocked** | below + [`docs/`](./docs) | this README |
 
 > 📐 [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · 🔌 [`docs/SETUP.md`](./docs/SETUP.md) (sandbox +
-> Fly deploy) · 🎬 [`docs/DEMO.md`](./docs/DEMO.md) · 🛡️ [`docs/PRODUCTION_HARDENING.md`](./docs/PRODUCTION_HARDENING.md) ·
+> Fly deploy) · 📚 [`docs/KNOWLEDGE_BASE.md`](./docs/KNOWLEDGE_BASE.md) (**add your own KB doc**) ·
+> 🎬 [`docs/DEMO.md`](./docs/DEMO.md) · 🛡️ [`docs/PRODUCTION_HARDENING.md`](./docs/PRODUCTION_HARDENING.md) ·
 > 📄 [`docs/ASSIGNMENT.md`](./docs/ASSIGNMENT.md)
 
 ---
@@ -78,14 +84,15 @@ pnpm eval          # one-command eval suite (add provider keys)
 One bounded tool-use loop is the single decision mechanism — no brittle intent classifier.
 
 ```
-Inbound webhook → verify secret → normalize → idempotency dedupe → per-conversation queue → ack fast
+Inbound webhook → verify secret / HL signature → normalize → idempotency dedupe → debounce burst
+                                                              → per-conversation queue → ack fast
                                                               │
                               ┌────────────────────────────────┘
                               ▼  Orchestrator.runTurn  (bounded tool-use loop)
        bot disabled? ──yes──▶ send a holding reply ("a team member will follow up") — not silence
             │no
             ▼
-       system prompt + history (last 40 msgs) + user msg ──▶ provider.generate(tools)
+       fetch contact (what's on file) + system prompt + history (last 40) + user msg ──▶ generate(tools)
             ├─ no tool call   → reply directly (chit-chat)      ← RAG NOT triggered
             ├─ search_kb      → retrieve (threshold) → grounded answer / decline
             ├─ a skill        → execute, feed result back, loop
@@ -133,8 +140,9 @@ and the turn's `decision` name + `ragUsed` / `sources` / `toolsUsed` make the ro
 **1. Multi-provider LLM.** One `AiSdkProvider` implements `LLMProvider` for all three vendors over
 the Vercel AI SDK — same code, a different model handle. Errors normalize to typed classes
 (`RateLimitError`, `AuthError`, `ContextLengthError`, `TransientError`) so retry/backoff is uniform.
-An OpenAI-compatible `baseURL` lets the same seam drive gateways (Groq/OpenRouter). Adding a 4th
-provider = one case in `src/providers/registry.ts`. **Switch = `LLM_PROVIDER` env.**
+An OpenAI-compatible `baseURL` lets the same seam drive gateways (Groq / OpenRouter / llmapi.ai —
+prod currently runs `gpt-4.1-nano` via llmapi.ai for reliable, cheap tool-calling). Adding a 4th
+native provider = one case in `src/providers/registry.ts`. **Switch = `LLM_PROVIDER` / `OPENAI_*` env.**
 
 **2. RAG, triggered — not always-on.** Retrieval is a tool the agent calls only when it needs facts,
 so chit-chat and skill turns never touch the vector store (the assignment's core RAG concern). A
@@ -143,21 +151,31 @@ heading-aware chunker → on-device embeddings (`bge-small`, 384-dim) → cosine
 invents** when the KB has no answer. KB docs carry **OKF (Open Knowledge Format) frontmatter** —
 `status` / `verified` / `stale_after` / `source` — so grounding is **provenance-aware**: a match
 that's `deprecated` or past `stale_after` is declined with reason `stale` (never quote outdated
-policy), and each source's trust + freshness rides along into the trace. 14 KB docs → 94 chunks.
-See [`docs/OKF_DESIGN.md`](./docs/OKF_DESIGN.md).
+policy), and each source's trust + freshness rides along into the trace. 13 KB docs → 94 chunks.
+**Adding a doc** = drop a markdown file in `kb/` and re-ingest (`pnpm ingest` / `ingest:pg`; a
+`fly deploy` re-ingests automatically) — step-by-step in [`docs/KNOWLEDGE_BASE.md`](./docs/KNOWLEDGE_BASE.md).
+See also [`docs/OKF_DESIGN.md`](./docs/OKF_DESIGN.md).
 
 **3. Extensible skills.** Each skill is an `AgentTool` (name + Zod schema + `run`), and the schema is
 surfaced to the model and validated on the way in. Adding one is **registration** — a file plus an
 entry in `src/skills/index.ts`:
 - **Update Contact Field** — extracts name/email/budget/preferred-time the customer shares and writes
-  them to the contact (standard vs. custom fields mapped for HighLevel).
-- **Human Handover** — on explicit ask / frustration / out-of-scope: sends a final message, stops the
-  bot, tags + reassigns the contact. Bot-off state is **durable** (rehydrates from the CRM tag). Two
-  UX touches: a **HITL gate** (won't hand off until we have a name + email/phone so a human can
-  actually follow up — it asks for what's missing first), and a handed-over conversation gets a brief
-  **holding reply** ("a team member will follow up") instead of going silent.
-- **Appointment Booking** — `get_available_slots` (handles "tomorrow afternoon") + `book_appointment`;
-  handles **no-availability** and **slot-taken races**, and is **idempotent** (won't double-book).
+  them to the contact (standard vs. custom fields mapped for HighLevel). **Conflict-aware:** if a field
+  already holds a *different* value (record says "Alex", customer now says "Sam"), it returns
+  `needsConfirmation` with the existing value so the agent confirms before overwriting — never silently.
+- **Human Handover** — on explicit ask / frustration / out-of-scope (real-estate matters needing a
+  person — *not* off-topic trivia): sends a final message, stops the bot, tags + reassigns the contact.
+  Bot-off state is **durable** (rehydrates from the CRM tag). A **HITL gate** won't hand off until we
+  have a name + email/phone (asks for what's missing first), and a handed-over conversation gets a
+  brief **holding reply** instead of going silent.
+- **Appointment Booking** — `get_available_slots` (handles "tomorrow afternoon") → **presents the
+  options and waits for a choice** (never auto-books) → `book_appointment`. Requires the customer's
+  name + a contact channel first (gate); **never double-books** (returns `needsReschedule`);
+  `reschedule=true` cancels-then-rebooks; plus a real **`cancel_appointment`** and a read-only
+  **`get_my_appointments`**. Handles no-availability and slot-taken races; idempotent on the same slot.
+- **Contact-aware turns** — the orchestrator injects what we already know about the contact (name /
+  email / phone on file) into each turn's system prompt, so the agent proactively asks for only the
+  missing details before a booking or handover — instead of discovering the gap when a tool refuses.
 
 **4. Execution transparency.** Every turn emits a canonical `Trace`: assembled system prompt,
 provider/model, whether RAG fired (which KB docs + `kb/…md` paths + similarity scores), each tool's
@@ -205,8 +223,24 @@ a latency suite:
 
 Grounded facts are matched with word/number boundaries (so `5%` ≠ `15%`); declines are checked
 against a fabricated-figure denylist. Infra errors (e.g. a missing embedding key) are surfaced as
-errors — they never masquerade as model behavior. Record results in
-[`docs/EVAL_RESULTS.md`](./docs/EVAL_RESULTS.md).
+errors — they never masquerade as model behavior.
+
+**Real results** (run 2026-08-11, via llmapi.ai; pass-rate per suite — **precision is 100% on every
+skill suite: the agent never mis-fires or fabricates**, so all misses are *recall*):
+
+| Model | rag-trigger | groundedness | update-contact | handover | appointment | latency p50/p95 |
+|---|---|---|---|---|---|---|
+| **claude-sonnet-5** (llmapi) | 26/26 | 22/24 | 22/22 | 21/22 | 22/22 | 1735 / 2322 ms |
+| **gemini-flash-latest** (native SDK) | 26/26 | 23/24 | 22/22 | 21/22 | 22/22 | 2055 / 2599 ms |
+| **gpt-4.1** (llmapi) | 26/26 | 22/24 | 18/22 | 19/22 | 22/22 | 1018 / 1284 ms |
+| **gpt-4.1-nano** *(prod)* (llmapi) | 22/26 | 18/24 | 17/22 | 15/22 | 21/22 | 862 / 1765 ms |
+
+Headline: failures are **under-firing, never mis-firing** (precision 100%, never fabricates), and
+recall scales with model tier — `claude-sonnet-5` / `gemini-flash-latest` are near-perfect; `gpt-4.1`
+close; `gpt-4.1-nano` (the cheap/fast prod pick) under-calls tools (esp. handover R42) but stays safe.
+**Gemini caveat:** it works great via the **native `@ai-sdk/google`** path, but the llmapi
+OpenAI-compat *proxy* rejects our tool schema (`exclusiveMinimum`) — use the native SDK for Gemini.
+Full per-model breakdown + candid failure analysis in [`docs/EVAL_RESULTS.md`](./docs/EVAL_RESULTS.md).
 
 ---
 
@@ -220,8 +254,8 @@ graders' "is a 4th provider or 3rd skill cheap?" question is a clear yes.
 | **Bounded tool-use loop** as the only router | model tool-choice = routing; uniform + fully traceable | trusts the model to choose tools (bounded by `maxSteps`) |
 | **RAG as a tool**, threshold-gated | selective retrieval + explicit decline (never invent) | one extra model hop when it does retrieve |
 | **On-device embeddings** (`bge-small`) | zero embedding-API cost/latency; runs offline | model download baked into the image |
-| **Flat in-memory vector index** (file), pgvector opt-in | sub-ms over ~94 chunks, zero infra | pgvector (`PGVECTOR=true`) for scale/live-reingest |
-| **HighLevel is system-of-record** | contacts + conversations aren't duplicated into our DB | history re-hydration from HL is a documented next step |
+| **Vector index: file locally, `pgvector` in prod** | file = sub-ms over ~94 chunks, zero infra; pgvector on Fly Managed Postgres in prod | `PGVECTOR=true` gates pgvector (Fly's flex PG lacks the extension → we use Managed PG) |
+| **HighLevel is system-of-record** | contacts + conversations aren't duplicated into our DB | history re-hydration from HL (`getConversationHistory` CRM method in place; orchestrator wiring underway) |
 | **Mock-first CRM** behind `CrmClient` | whole loop runs offline; live client is a config swap | live HL client shapes unit-tested, then exercised live |
 
 More in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
@@ -232,11 +266,16 @@ More in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 All behind the existing seams; the DB-less/no-Langfuse default still runs unchanged. Deployed live.
 
-- **Webhook authenticity** — `/webhook` requires a shared secret (`x-webhook-secret` /
-  `Authorization: Bearer`), constant-time compared; open only when unset (dev).
-- **Persistence** — webhook idempotency (`processed_messages`) → **Postgres** when `DATABASE_URL` is
-  set; the KB is opt-in pgvector (`PGVECTOR=true`, needs the `vector` extension). HighLevel stays
-  system-of-record. All env-selected — no code change.
+- **Webhook authenticity** — `/webhook` accepts either a shared secret (`x-webhook-secret` /
+  `Authorization: Bearer`, constant-time compared) **or** a valid HighLevel **Ed25519 signature**
+  (`x-ghl-signature`, verified against HighLevel's public key) — so the free native `InboundMessage`
+  webhook works alongside our own workflow/test posts. Open only when unset (dev).
+- **Persistence** — webhook idempotency (`processed_messages`) **and** the KB vector store (`kb_chunks`,
+  `pgvector`) run on **Fly Managed Postgres** in prod; the **OAuth token** persists there too,
+  **encrypted at rest (AES-256-GCM)** so a DB leak yields only ciphertext. `PGVECTOR=true` gates
+  pgvector (falls back to the baked file index where the extension is absent). All env-selected.
+- **Message coalescing** — a rapid burst in one conversation is debounced into a single turn
+  (`MESSAGE_DEBOUNCE_MS`), so "hi / hi / hi" gets one reply, not three.
 - **Crash-safe, exactly-once** — idempotency uses a `processing → done` **lease** so a crash mid-turn
   is reclaimed, not dropped; `book_appointment` is idempotent so a retry can't double-book.
 - **Durable handover** — bot-off rehydrates from the CRM `bot-handover` tag, surviving restarts.
@@ -247,8 +286,11 @@ All behind the existing seams; the DB-less/no-Langfuse default still runs unchan
 - **Deploy** — `Dockerfile` + `fly.toml` (warm machine, health check, baked KB + embed model);
   self-hosted **Langfuse v2** in `deploy/langfuse/`.
 
-Full plan + rationale + what's deferred for the POC (managed PG, horizontal scaling, timeouts/
-failover, metrics/SLO, hybrid-search/rerank, CI eval gate): [`docs/PRODUCTION_HARDENING.md`](./docs/PRODUCTION_HARDENING.md).
+- **Graceful degradation** — a turn that throws (LLM rate-limit, RAG/CRM blip) sends a best-effort
+  fallback ("a team member will follow up") instead of going silent; LLM calls retry with backoff.
+
+Full plan + rationale + what's deferred for the POC (horizontal scaling, timeouts/failover,
+metrics/SLO, hybrid-search/rerank, CI eval gate): [`docs/PRODUCTION_HARDENING.md`](./docs/PRODUCTION_HARDENING.md).
 
 ---
 
@@ -283,7 +325,7 @@ a cloud embedder (`EMBED_PROVIDER`/`EMBED_MODEL`). For the real sandbox + Fly de
 | `pnpm eval [provider...] [suite...]` | One-command eval suite |
 | `pnpm trace [<id>\|latest]` | Terminal trace viewer |
 | `pnpm providers:smoke [provider]` | Check a provider returns a tool call |
-| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 151 tests · types · lint |
+| `pnpm test` · `pnpm typecheck` · `pnpm lint` | 187 tests · types · lint |
 | `pnpm db:migrate` · `pnpm ingest:pg` | Apply schema / load KB into Postgres (when `DATABASE_URL` set) |
 
 ## Repo layout
@@ -291,21 +333,22 @@ a cloud embedder (`EMBED_PROVIDER`/`EMBED_MODEL`). For the real sandbox + Fly de
 ```
 src/
   config/        env schema (zod), pg pool, Drizzle schema/db, migrate
-  server/        Fastify app: /webhook (+auth), /health, OAuth routes
-  orchestrator/  turn loop, idempotency (mem/pg), per-convo queue, history, tool dispatch
+  server/        Fastify app: /webhook (secret + HL-signature auth), /health, OAuth routes
+  orchestrator/  turn loop, idempotency (mem/pg), per-convo queue, debouncer, history, tool dispatch
   providers/     LLMProvider over the Vercel AI SDK + registry
   llm/           canonical types, typed errors, retry
   rag/           chunker, embedder, vector index (file/pg), retriever, ingest, search_kb tool
   skills/        registry + update-contact / handover / appointment
-  crm/           CrmClient interface + MockCrmClient + highlevel/ (real client, OAuth/PIT)
+  crm/           CrmClient interface + MockCrmClient + highlevel/ (real client, OAuth/PIT,
+                 encrypted Postgres token store, conversation-history rehydrate)
   trace/         Trace types, collector, exporters (Langfuse / JSON / console), CLI
-  util/          logger (PII-redacting), redact
+  util/          logger (PII-redacting), redact, crypto (AES-256-GCM for the OAuth token)
 evals/           harness, runners, scoring, cases/*.json, report
-kb/              14 markdown docs (Demo Realty)
+kb/              13 markdown docs (Demo Realty) — raw KB, ingested by pnpm ingest / ingest:pg
 db/              schema.sql (core) + schema-pgvector.sql (opt-in)
 deploy/langfuse/ self-hosted Langfuse v2 Fly config
-docs/            ARCHITECTURE, SETUP, DEMO, PRODUCTION_HARDENING, EVAL_RESULTS, ASSIGNMENT,
-                 QA_TEST_QUESTIONS, CHAT_TEST_CASES
+docs/            ARCHITECTURE, SETUP, KNOWLEDGE_BASE (add a KB doc), OKF_DESIGN, DEMO,
+                 PRODUCTION_HARDENING, EVAL_RESULTS, ASSIGNMENT, QA_TEST_QUESTIONS, CHAT_TEST_CASES
 ```
 
 ## Team-of-One ownership
@@ -317,7 +360,7 @@ docs/            ARCHITECTURE, SETUP, DEMO, PRODUCTION_HARDENING, EVAL_RESULTS, 
   trace surface is designed around one question: *why did the agent say that?*
 - **Engineering** — a bounded tool-use loop as the single decision mechanism; the Vercel AI SDK for
   normalized multi-provider calls; a swappable vector index (file → pgvector); mock-first, offline-runnable.
-- **QA** — 151 unit tests + an independent adversarial review sweep after every phase (findings
+- **QA** — 187 unit tests + an independent adversarial review sweep after every phase (findings
   applied before moving on), plus the eval suite as behavioral regression coverage.
 
 ## Functional vs. mocked
@@ -328,6 +371,6 @@ RAG ingest + retrieval + threshold, all three skills **exercised against the rea
 auth + Postgres idempotency + PII masking — all deployed on Fly.
 
 **Requires keys to exercise:** live LLM/embedding calls (API keys) and the Langfuse dashboard (a
-Langfuse instance — one is deployed). **Deferred for the POC** (documented, not built): managed
-Postgres, horizontal scaling, request timeouts/failover, metrics/SLO alerting, hybrid-search/rerank,
-CI eval gate — see [`docs/PRODUCTION_HARDENING.md`](./docs/PRODUCTION_HARDENING.md).
+Langfuse instance — one is deployed). **Deferred for the POC** (documented, not built): horizontal
+scaling, request timeouts/failover, metrics/SLO alerting, hybrid-search/rerank, CI eval gate — see
+[`docs/PRODUCTION_HARDENING.md`](./docs/PRODUCTION_HARDENING.md).

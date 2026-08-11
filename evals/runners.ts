@@ -30,6 +30,11 @@ export interface SkillCase {
   expectedFields?: string[];
 }
 
+/** Optional pacing between eval calls — lets a rate-limited gateway (e.g. a free
+ *  OpenAI-compatible tier) run the suite without tripping "too many requests". */
+const DELAY_MS = Number(process.env.EVAL_DELAY_MS) || 0;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** Run `fn` over items with bounded concurrency, preserving input order. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out = new Array<R>(items.length);
@@ -38,13 +43,14 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
     while (next < items.length) {
       const i = next++;
       out[i] = await fn(items[i]!);
+      if (DELAY_MS) await sleep(DELAY_MS);
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
 }
 
-const CONCURRENCY = 4;
+const CONCURRENCY = Number(process.env.EVAL_CONCURRENCY) || 4;
 
 interface Observed<C> {
   c: C;
@@ -136,7 +142,7 @@ export async function runGroundedness(
       detail = `grounded expected facts ${JSON.stringify(c.expectedFacts)} — reply: "${obs.reply ?? ''}"`;
     } else {
       declined++;
-      pass = declinePass(obs.reply, obs.decision, obs.budgetExhausted);
+      pass = declinePass(obs.reply, obs.decision, obs.budgetExhausted, c.message);
       if (pass) declinedPassed++;
       detail = `should decline — reply: "${obs.reply ?? ''}"`;
     }

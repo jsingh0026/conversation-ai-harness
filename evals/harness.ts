@@ -52,7 +52,11 @@ export async function runEvalTurn(
 ): Promise<TurnObservation> {
   const now = new Date();
   const crm = new MockCrmClient({ slots: { [CAL]: seedSlots(now) } });
-  crm.upsertContact({ id: 'ct' });
+  // Seed a *reachable* contact (name + email) so the booking/handover contact-info
+  // gates measure tool routing, not first-turn detail-gathering. (Update-contact
+  // cases still exercise the tool — a shared value that differs triggers the
+  // conflict path, which is a tool call.)
+  crm.upsertContact({ id: 'ct', name: 'Jordan Lee', email: 'jordan.lee@example.com' });
 
   const tools = [
     createSearchKbTool(retriever),

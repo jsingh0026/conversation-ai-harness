@@ -27,8 +27,11 @@ const ParamsSchema = z
       .describe('The customer\'s email address.'),
     phone: z.string().min(3).optional().describe('The customer\'s phone number.'),
     budget: z.coerce
+      // `.min(1)` (not `.positive()`) emits JSON Schema `minimum`, not
+      // `exclusiveMinimum` — the latter is rejected by Gemini's function-calling
+      // schema (and any OpenAI-compat proxy forwarding to it).
       .number()
-      .positive()
+      .min(1)
       .optional()
       .describe('Purchase/rental budget as a number (no currency symbols).'),
     preferredTime: z

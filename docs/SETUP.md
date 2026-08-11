@@ -25,22 +25,43 @@ this); this is the Phase 7 wiring checklist.
 Either way you still need the sub-account objects in §5.
 
 ## 2. Marketplace app (OAuth)
-1. In the Marketplace developer portal, **create an app**.
-2. Copy **Client ID** / **Client Secret** → `HL_CLIENT_ID`, `HL_CLIENT_SECRET`.
-3. Set the **Redirect URI** → `HL_REDIRECT_URI` (e.g. `http://localhost:3000/oauth/callback`).
-4. Enable the **scopes**:
-   - `conversations.readonly`, `conversations.write`, `conversations/message.readonly`, `conversations/message.write`
+In the Marketplace developer portal, **create an app**, then open **Advanced Settings → Auth** (this
+is the page that has the Install link, Redirect URLs, and Scopes). *Note:* "External Authentication"
+is a different feature (for apps with their own login) — leave it **off**.
+1. Copy **Client ID** / **Client Secret** → `HL_CLIENT_ID`, `HL_CLIENT_SECRET`.
+2. Under **Redirect URLs**, add your callback → also set it as `HL_REDIRECT_URI`
+   (local: `http://localhost:3000/oauth/callback`; deployed: `https://<app>.fly.dev/oauth/callback`).
+3. Select the **scopes**:
+   - `conversations.readonly`, `conversations.write`, `conversations/message.readonly`, `conversations/message.write`, `conversations/livechat.write`
    - `contacts.readonly`, `contacts.write`
    - `locations/customFields.readonly`
    - `calendars.readonly`, `calendars/events.readonly`, `calendars/events.write`
    - `users.readonly`
-5. Complete the OAuth consent for the sub-account; the harness exchanges the code and stores the
-   **location access + refresh token** (auto-refreshed in code).
+4. **Authorize:** use the app's **Install link** on that same page (it *is* the authorize URL — don't
+   hand-build one) → choose **Sub-Account View** → pick your sub-account → Install. HighLevel redirects
+   to your callback with a `?code=…`; the harness exchanges it and stores the **location access +
+   refresh token** (auto-refreshed). On Fly the token is persisted in **Postgres, encrypted at rest**
+   (AES-256-GCM via `TOKEN_ENCRYPTION_KEY`) so it survives deploys; locally it's a `0600` file.
+   - ⚠️ OAuth and PIT are mutually exclusive: unset `HL_PRIVATE_TOKEN` for the OAuth callback to run.
+   - A **draft** app is fine for OAuth — no publishing needed.
 
-## 3. Inbound webhook
-1. Expose the local server publicly for dev — **ngrok**: `ngrok http 3000` → gives an HTTPS URL.
-2. Subscribe the app to the **`InboundMessage`** event, delivery URL = `<ngrok-url>/webhook`.
-3. If the app provides a **webhook signing secret**, copy it → `HL_WEBHOOK_SECRET` (used to verify deliveries).
+## 3. Inbound webhook (native `InboundMessage` — free)
+The app's **native `InboundMessage` webhook** is the production path: it's **free** (unlike the
+Premium "Custom Webhook" *workflow action*), delivers even on a **draft** app once installed, and is
+**Ed25519-signed** rather than secret-header'd.
+1. In the app: **Advanced Settings → Webhooks** → set the **Webhook URL** to `…/webhook`
+   (deployed: `https://<app>.fly.dev/webhook`; local dev: an `ngrok http 3000` HTTPS URL) → enable the
+   **`InboundMessage`** event → Save.
+2. **Authenticity:** HighLevel signs each delivery with **`x-ghl-signature`** (Ed25519). Our `/webhook`
+   verifies it against HighLevel's published public key — **no per-app secret needed** for native
+   webhooks (see `src/server/hl-signature.ts`).
+3. `HL_WEBHOOK_SECRET` is only for **our own** posts (a HighLevel *workflow* "Send Webhook" action, or
+   local `curl` tests): send it as `x-webhook-secret`. `/webhook` accepts **either** a valid signature
+   **or** the shared secret.
+
+> Alternative (no app): a **workflow** "Customer Replied → Send Webhook" action can POST to `/webhook`
+> with an `x-webhook-secret` header — but the *Custom Webhook* action is a **billed Premium** action
+> (a drained wallet silently skips it). The native `InboundMessage` webhook above avoids that.
 
 ## 4. Channel (decide at Phase 7)
 Sending a reply needs a live channel in the sub-account — **either** provision a **LeadConnector phone
