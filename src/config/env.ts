@@ -23,7 +23,8 @@ const EnvSchema = z.object({
   OPENAI_BASE_URL: z.string().optional(),
   CLAUDE_MODEL: z.string().default('claude-sonnet-5'),
   OPENAI_MODEL: z.string().default('gpt-4.1'),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  // `gemini-flash-latest` resolves to the current Flash (gemini-2.0/2.5-flash are retired).
+  GEMINI_MODEL: z.string().default('gemini-flash-latest'),
 
   // --- Embeddings ---
   // Local mode runs a Transformers.js model on-device (no API key). When false,
